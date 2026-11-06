@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1793977426">
+<link rel="stylesheet" href="style.css?v=1793977773">
 <script type="importmap">
 { "imports": { "three": "./lib/three/three.module.min.js", "three/addons/": "./lib/three/addons/" } }
 </script>
@@ -40,6 +40,13 @@
 
 <div id="label" class="hover-label"><span class="hl-name"></span><span class="hl-price"></span></div>
 
+<div class="pbar" id="pbar">
+  <div class="pbar-top"><span id="pbLine"></span><span id="pbCount"></span></div>
+  <h2 class="pbar-name" id="pbName"></h2>
+  <div class="pbar-meta"><span class="swatch" id="pbSwatch"></span><span id="pbColor"></span><span class="sep">·</span><span id="pbPrice"></span></div>
+  <div class="pbar-dots" id="pbDots"></div>
+  <div class="pbar-actions"><button class="btn ghost" data-act="details">Details</button><button class="btn primary" data-act="tryOnCur"><span class="dot"></span>Try it on</button></div>
+</div>
 <div class="rail-hint" id="railHint"><span class="line"></span>Drag to browse<span class="line"></span></div>
 <div class="counter" id="counter"><span id="cIdx">01</span> / <span id="cTot">08</span></div>
 
@@ -95,6 +102,6 @@
 <div id="credits" class="credits"><button class="close" data-act="closeCredits" aria-label="Close">×</button><p class="eyebrow">Garment models — CC BY 4.0</p><ul id="creditList"></ul><p class="p-note">Recoloured, refitted and rigged for Maison Lin.</p></div>
 <div id="toast" class="toast"></div>
 
-<script type="module" src="js/app.js?v=1793977426"></script>
+<script type="module" src="js/app.js?v=1793977773"></script>
 </body>
 </html>

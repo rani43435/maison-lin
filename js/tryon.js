@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { makeGarment, HIPS_Y } from './garment.js?v=1793977426';
+import { makeGarment, HIPS_Y } from './garment.js?v=1793977773';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';

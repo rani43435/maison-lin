@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793977426';
-import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js?v=1793977426';
+import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793977773';
+import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js?v=1793977773';
 
 const $ = (s) => document.querySelector(s);
+// dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
+const PHONE = (matchMedia('(pointer: coarse)').matches || /iPhone|iPod|Android.+Mobile/i.test(navigator.userAgent)) && Math.min(screen.width, screen.height) < 820;
+document.body.classList.add(PHONE ? 'phone' : 'desk');
 const canvas = $('#stage');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -138,7 +141,7 @@ let selected = null;
 let hovered = -1;
 const pointer = new THREE.Vector2(-9, -9);
 const ray = new THREE.Raycaster();
-let drag = null;
+let drag = null, dragStartOff = 0;
 let productSpin = 0, spinVel = 0, spinIdle = 0, lastMoveT = 0;
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 const camPosT = new THREE.Vector3(), camLookT = new THREE.Vector3();
@@ -152,22 +155,32 @@ function layout() {
 addEventListener('resize', layout);
 
 function homeCamera() {
-  const mobile = innerWidth < 760;
+  if (PHONE) {
+    const hf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+    const dist = Math.max(3.9, 0.52 / hf);
+    const vh = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * dist;
+    camPosT.set(0, 1.55, dist); camLookT.set(0, RAIL_Y - vh * 0.64, 0);
+    return;
+  }
   const hf = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
-  const want = mobile ? 1.55 : 3.6;
-  const dist = Math.max(4.4, want / 2 / Math.tan(hf / 2));
+  const dist = Math.max(4.4, 3.6 / 2 / Math.tan(hf / 2));
   camPosT.set(0, 1.66, dist); camLookT.set(0, 1.56, 0);
 }
 function productCamera(slot) {
-  const mobile = innerWidth < 760;
   const p = new THREE.Vector3(); slot.pivot.getWorldPosition(p);
-  if (mobile) { camPosT.set(p.x, 1.25, 4.6); camLookT.set(p.x, 1.1, 0.85); }
-  else { camPosT.set(p.x + 0.5, 1.68, 3.2); camLookT.set(p.x + 0.5, 1.6, 0.6); }
+  if (PHONE) {
+    const hf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+    const dist = Math.max(4.2, 0.78 / hf);
+    const vh = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * dist;
+    camPosT.set(p.x, 1.6, 0.85 + dist); camLookT.set(p.x, RAIL_Y + 0.04 - vh * 0.8, 0.85);
+    return;
+  }
+  camPosT.set(p.x + 0.5, 1.68, 3.2); camLookT.set(p.x + 0.5, 1.6, 0.6);
 }
 
 // ---------- input ----------
 canvas.addEventListener('pointerdown', (e) => {
-  drag = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, last: e.clientX };
+  drag = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0, last: e.clientX }; dragStartOff = target;
   canvas.setPointerCapture(e.pointerId);
   canvas.classList.add('grabbing');
 });
@@ -176,7 +189,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (!drag) return;
   const dx = e.clientX - drag.last; drag.last = e.clientX;
   drag.moved += Math.abs(dx);
-  if (mode === 'home') target -= dx * 0.0042 * (innerWidth < 760 ? 1.6 : 1);
+  if (mode === 'home') target -= dx * (PHONE ? 0.0034 : 0.0042);
   else if (mode === 'product') {
     const now = performance.now(); const dtE = Math.max(8, now - lastMoveT) / 1000; lastMoveT = now;
     productSpin += dx * 0.009;
@@ -187,6 +200,13 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerup', (e) => {
   canvas.classList.remove('grabbing');
   const click = drag && drag.moved < 6;
+  if (PHONE && drag && mode === 'home' && !click) {
+    // one garment per swipe
+    const dx = e.clientX - drag.x;
+    const from = Math.round(dragStartOff / SPACING);
+    const step = Math.abs(dx) > 30 ? (dx < 0 ? 1 : -1) : 0;
+    target = THREE.MathUtils.clamp(from + step, 0, N - 1) * SPACING;
+  }
   drag = null;
   if (click) onClick(e);
 });
@@ -280,7 +300,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1793977426');
+  const mod = await import('./tryon.js?v=1793977773');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it) => addToBag(it, size) });
   running = false;
   await tryon.open(item);
@@ -305,7 +325,26 @@ document.addEventListener('click', (e) => {
   if (act === 'home' || act === 'collection') { closeBag(); closeProduct(); if (act === 'home') target = 0; }
   if (act === 'addBag' && selected != null) addToBag(slots[selected].item);
   if (act === 'tryOn' && selected != null) openTryOn(slots[selected].item);
+  if (act === 'details') openProduct(Math.max(0, pbIdx));
+  if (act === 'tryOnCur') openTryOn(slots[Math.max(0, pbIdx)].item);
 });
+
+// ---------- phone bar ----------
+let pbIdx = -1;
+function updatePhoneBar(i) {
+  if (!PHONE || i === pbIdx) return;
+  const first = pbIdx < 0; pbIdx = i;
+  const it = ITEMS[i]; const bar = $('#pbar');
+  const fill = () => {
+    $('#pbLine').textContent = it.line; $('#pbCount').textContent = `${String(i + 1).padStart(2, '0')} / ${String(N).padStart(2, '0')}`;
+    $('#pbName').textContent = it.name; $('#pbColor').textContent = it.color; $('#pbPrice').textContent = `€${it.price}`;
+    $('#pbSwatch').style.background = it.hex;
+    [...$('#pbDots').children].forEach((d, k) => d.classList.toggle('on', k === i));
+    bar.classList.remove('swap');
+  };
+  if (first) fill(); else { bar.classList.add('swap'); setTimeout(fill, 180); }
+}
+if (PHONE) $('#pbDots').innerHTML = ITEMS.map(() => '<i></i>').join('');
 
 // ---------- label ----------
 const label = $('#label');
@@ -341,9 +380,10 @@ function tick() {
   rail.position.x = -offset;
   const ci = Math.round(THREE.MathUtils.clamp(offset, minOff, maxOff) / SPACING);
   $('#cIdx').textContent = String(ci + 1).padStart(2, '0');
+  updatePhoneBar(ci);
 
   // hover
-  if (mode === 'home' && !drag) {
+  if (mode === 'home' && !drag && !PHONE) {
     const h = pick();
     if (h !== hovered) { hovered = h; canvas.classList.toggle('pointer', h >= 0); }
   } else if (hovered !== -1) { hovered = -1; canvas.classList.remove('pointer'); }
@@ -353,10 +393,11 @@ function tick() {
     const acc = -vel * 0.9 - s.swing * 38 - s.swingV * 2.6;
     s.swingV += acc * dt; s.swing += s.swingV * dt;
     const isSel = mode === 'product' && selected === i;
-    const isHover = hovered === i;
-    const turnT = isSel ? 0 : isHover ? s.baseTurn + 0.38 : s.baseTurn + Math.sin(t * 0.4 + i) * 0.03;
+    const isHover = hovered === i || (PHONE && mode === 'home' && i === ci);
+    const phoneCur = PHONE && mode === 'home' && i === ci;
+    const turnT = isSel || phoneCur ? 0 : isHover ? s.baseTurn + 0.38 : s.baseTurn + Math.sin(t * 0.4 + i) * 0.03;
     s.turn += (turnT - s.turn) * Math.min(1, dt * 3);
-    s.lift += ((isSel ? 1 : isHover ? 0.18 : 0) - s.lift) * Math.min(1, dt * 3);
+    s.lift += ((isSel ? 1 : phoneCur ? 0.3 : isHover ? 0.18 : 0) - s.lift) * Math.min(1, dt * 3);
     s.pivot.rotation.z = s.swing + Math.sin(t * 0.7 + i * 1.7) * 0.006;
     s.pivot.rotation.y = s.turn;
     s.pivot.position.z = s.lift * 0.85;
@@ -376,13 +417,13 @@ function tick() {
     }
   });
 
-  if (mode === 'home' && hovered >= 0) showLabel(slots[hovered]); else hideLabel();
+  if (!PHONE && mode === 'home' && hovered >= 0) showLabel(slots[hovered]); else hideLabel();
 
   if (mode === 'product' && selected != null) productCamera(slots[selected]); else homeCamera();
   camPos.lerp(camPosT, Math.min(1, dt * 2.4));
   camLook.lerp(camLookT, Math.min(1, dt * 2.4));
   // subtle parallax
-  const px = mode === 'home' ? pointer.x * 0.08 : 0, py = mode === 'home' ? pointer.y * 0.04 : 0;
+  const px = mode === 'home' && !PHONE ? pointer.x * 0.08 : 0, py = mode === 'home' && !PHONE ? pointer.y * 0.04 : 0;
   camera.position.set(camPos.x + (Math.abs(px) < 1 ? px : 0), camPos.y + (Math.abs(py) < 1 ? py : 0), camPos.z);
   camera.lookAt(camLook);
 
