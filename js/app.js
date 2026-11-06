@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793977773';
-import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js?v=1793977773';
+import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793979401';
+import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js?v=1793979401';
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -94,22 +94,26 @@ function shoulderProfile(g) {
 
 function makeHanger(g) {
   const { pts, top, zc } = shoulderProfile(g);
-  const grp = new THREE.Group(); grp.position.z = zc;
+  const grp = new THREE.Group();
   // flat wooden arm: an extruded rounded profile swept along the shoulder line
   const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p.x, p.y, 0)));
   const shape = new THREE.Shape();
   const w = 0.007, h = 0.013;
   shape.absellipse(0, 0, w, h, 0, Math.PI * 2);
   const arm = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { steps: 60, extrudePath: curve, bevelEnabled: false }), hangerWood);
-  arm.castShadow = true; grp.add(arm);
-  // brass neck + hook, rising from the centre of the arm through the collar
-  const stemH = HOOK_Y - 0.045 - top;
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, stemH, 10), brass);
-  stem.position.y = top + stemH / 2; grp.add(stem);
+  arm.castShadow = true; arm.position.z = zc; grp.add(arm);
+  // brass stem rising through the collar to a closed ring around the rail rod
+  const R = 0.024; // ring radius (rod radius is 0.014)
+  const a0 = new THREE.Vector3(0, top + 0.004, zc), a1 = new THREE.Vector3(0, HOOK_Y - R, 0);
+  const len = a0.distanceTo(a1);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, len, 10), brass);
+  stem.position.copy(a0).add(a1).multiplyScalar(0.5);
+  stem.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a1.clone().sub(a0).normalize());
+  grp.add(stem);
   const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.012, 16), brass);
-  nut.position.y = top + 0.008; grp.add(nut);
-  const hook = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.003, 10, 40, Math.PI * 1.25), brass);
-  hook.position.set(0.0, HOOK_Y - 0.026, 0); hook.rotation.z = -Math.PI * 0.12; grp.add(hook);
+  nut.position.set(0, top + 0.008, zc); grp.add(nut);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.0032, 12, 48), brass);
+  ring.position.set(0, HOOK_Y, 0); ring.rotation.y = Math.PI / 2; ring.castShadow = true; grp.add(ring);
   return grp;
 }
 
@@ -300,7 +304,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1793977773');
+  const mod = await import('./tryon.js?v=1793979401');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it) => addToBag(it, size) });
   running = false;
   await tryon.open(item);
