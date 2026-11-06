@@ -120,7 +120,7 @@ function homeCamera() {
 function productCamera(slot) {
   const mobile = innerWidth < 760;
   const p = new THREE.Vector3(); slot.pivot.getWorldPosition(p);
-  if (mobile) { camPosT.set(p.x, 1.25, 3.9); camLookT.set(p.x, 0.92, 0.6); }
+  if (mobile) { camPosT.set(p.x, 1.25, 4.6); camLookT.set(p.x, 1.1, 0.85); }
   else { camPosT.set(p.x + 0.5, 1.68, 3.2); camLookT.set(p.x + 0.5, 1.6, 0.6); }
 }
 

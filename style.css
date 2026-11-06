@@ -127,7 +127,10 @@ body.mode-product .intro,body.mode-product .rail-hint,body.mode-product .counter
   .intro{top:78px;left:18px;right:18px}
   .intro h1{font-size:36px;margin:8px 0 10px}
   .intro-sub{font-size:12.5px}
-  .product{top:auto;bottom:0;height:56%;width:100%;padding:28px 22px 26px;border-left:0;border-top:1px solid var(--line);transform:translateY(102%)}
+  .product{top:auto;bottom:0;height:auto;max-height:58%;width:100%;padding:24px 22px calc(20px + env(safe-area-inset-bottom));border-left:0;border-top:1px solid var(--line);transform:translateY(102%)}
+  .p-desc,.p-details,.p-note{display:none}
+  .sizes{margin:14px 0}
+  .btn{height:46px}
   .product h2{font-size:34px;margin:6px 0 8px}
   .p-price{margin:12px 0}
   .close{top:16px;right:16px}
