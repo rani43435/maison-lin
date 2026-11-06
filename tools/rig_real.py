@@ -17,7 +17,68 @@ def seg_dist(P, a, b):
     ab = b - a; t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
     return np.linalg.norm(P - (a + t[:, None] * ab), axis=1), t
 
+SMOOTH = {'tee': 3, 'knit': 2, 'polo': 0, 'linen': 6}
+OVERSIZE = True
+OV = dict(width=0.17, depth=0.10, length=0.10, drop=0.55, sleeve=0.07, hem=0.06)
+
+def arm_weight(V, j, sl, tagged):
+    x, y, z = V[:, 0], V[:, 1], V[:, 2]
+    rx, ry = j['S'][0] + 0.02, 0.13
+    nT = np.sqrt((x / rx) ** 2 + (y / ry) ** 2)
+    a = np.zeros(len(V)); tt = np.zeros(len(V))
+    for sx in (1, -1):
+        m = (x >= 0) if sx > 0 else (x < 0)
+        S = np.array([j['S'][0] * sx, 0, j['S'][1]]); E = np.array([j['E'][0] * sx, 0, j['E'][1]]); W = np.array([j['W'][0] * sx, 0, j['W'][1]])
+        d1, _ = seg_dist(V[m], S, E); d2, _ = seg_dist(V[m], E, W)
+        u = (E - S) / np.linalg.norm(E - S); t = (V[m] - S) @ u
+        a[m] = sl[m] if tagged else sm(-0.35, 0.35, nT[m] - np.minimum(d1, d2) / 0.075) * sm(-0.05, 0.03, t)
+        tt[m] = t
+    return a, tt
+
+def ov_point(p, a, j, sgn):
+    """oversize transform for one point. a = arm weight"""
+    x, y, z = p
+    Sx, Sz = j['S']
+    ztop = 1.40
+    # torso: wider, deeper, longer and boxier toward the hem
+    k = 1 + OV['width'] + OV['hem'] * sm(1.3, 0.9, z)
+    tx, ty = x * k, y * (1 + OV['depth'])
+    tz = z if z > ztop else ztop - (ztop - z) * (1 + OV['length'])
+    # sleeves: moved out with the dropped shoulder, slightly lower, a bit longer
+    dx = sgn * Sx * OV['width'] * (1 + OV['drop'])
+    sx_, sy_, sz_ = x + dx, y * (1 + OV['depth'] * 0.5), z - 0.02
+    return np.array([tx * (1 - a) + sx_ * a, ty * (1 - a) + sy_ * a, tz * (1 - a) + sz_ * a])
+
+def oversize(ob, V, sl, tagged, j):
+    a, tt = arm_weight(V, j, sl, tagged)
+    out = np.empty_like(V)
+    for i, p in enumerate(V):
+        sgn = 1 if p[0] >= 0 else -1
+        q = ov_point(p, a[i], j, sgn)
+        # lengthen sleeve along the arm axis
+        if a[i] > 0:
+            S = np.array([j['S'][0] * sgn, 0, j['S'][1]]); E = np.array([j['E'][0] * sgn, 0, j['E'][1]])
+            u = (E - S) / np.linalg.norm(E - S)
+            q = q + u * max(0.0, tt[i]) * OV['sleeve'] * a[i]
+        out[i] = q
+    for i, v in enumerate(ob.data.vertices): v.co = out[i]
+    ob.data.update()
+    # move joints the same way (a=1 for elbow and wrist, shoulder sits at the new seam)
+    J2 = dict(j)
+    for key, aa in (('S', 0.6), ('E', 1.0), ('W', 1.0)):
+        x, z = j[key]
+        S = np.array([j['S'][0], 0, j['S'][1]]); E = np.array([j['E'][0], 0, j['E'][1]])
+        u = (E - S) / np.linalg.norm(E - S)
+        q = ov_point(np.array([x, 0, z]), aa, j, 1)
+        t = (np.array([x, 0, z]) - S) @ u
+        q = q + u * max(0.0, t) * OV['sleeve'] * aa
+        J2[key] = (float(q[0]), float(q[2]))
+    print('joints', n_global, J2)
+    return J2
+
+n_global = ''
 def main(n):
+    global n_global; n_global = n
     j = J[n]
     bpy.ops.wm.open_mainfile(filepath=f'/home/claude/sf/{n}_norm.blend')
     ob = bpy.data.objects['Shirt']
@@ -32,9 +93,22 @@ def main(n):
     # textures down to 1024
     for img in bpy.data.images:
         if img.size[0] > 1024: img.scale(1024, 1024)
+    # clean: weld seams, soften scan noise
+    import bmesh
+    bm = bmesh.new(); bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0006)
+    bm.to_mesh(ob.data); bm.free()
+    it = SMOOTH.get(n, 0)
+    if it:
+        m = ob.modifiers.new('cs', 'CORRECTIVE_SMOOTH'); m.iterations = it; m.factor = 0.5; m.use_only_smooth = True; m.smooth_type = 'LENGTH_WEIGHTED'
+        dg = bpy.context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg)); ob.modifiers.clear(); ob.data = me
     V = np.array([v.co for v in ob.data.vertices])
     sl = np.array([d.value for d in ob.data.attributes['sleeve'].data]) if 'sleeve' in ob.data.attributes else np.zeros(len(V))
     tagged = sl.max() > 0.5
+    if OVERSIZE:
+        j = oversize(ob, V, sl, tagged, dict(j))
+        V = np.array([v.co for v in ob.data.vertices])
 
     # armature
     arm = bpy.data.armatures.new('Rig'); rig = bpy.data.objects.new('Rig', arm)

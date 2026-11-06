@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793979401';
-import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js?v=1793979401';
+import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793980725';
+import { makeGarment, loadModel } from './garment.js?v=1793980725';
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -44,7 +44,7 @@ const wall = new THREE.Mesh(new THREE.PlaneGeometry(60, 20), new THREE.ShadowMat
 wall.position.set(0, 5, -2.2); wall.receiveShadow = true; scene.add(wall);
 
 // ---------- rail ----------
-const RAIL_Y = 2.12, SPACING = 0.78;
+const RAIL_Y = 2.2, SPACING = 0.78;
 const N = ITEMS.length;
 const railLen = (N - 1) * SPACING + 1.4;
 const rail = new THREE.Group(); scene.add(rail);
@@ -61,60 +61,36 @@ const hangerWood = new THREE.MeshPhysicalMaterial({ color: '#c9a77e', roughness:
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.62), walnut); foot.position.set(x, 0.015, 0); foot.castShadow = true; rail.add(foot);
   }
 }
-const profiles = {};
-function shoulderProfile(g) {
-  if (profiles[g.item.model]) return profiles[g.item.model];
+// ---------- rope ----------
+const ROPE = 0.2, ROPE_R = 0.0026;
+const ropeGeoDown = new THREE.CylinderGeometry(ROPE_R, ROPE_R, 1, 8, 1, true).translate(0, -0.5, 0);
+const tipGeo = new THREE.CylinderGeometry(0.0042, 0.0016, 0.012, 8);
+const attachCache = {};
+function attachPoint(g) {
+  if (attachCache[g.item.model]) return attachCache[g.item.model];
   g.root.updateMatrixWorld(true);
-  const hw = g.model.shoulderW / 2 * 0.85, step = 0.015;
-  const bins = new Map();
-  const v = new THREE.Vector3();
-  // depth centre of the shoulder band
-  let zs = 0, zn = 0;
-  for (const m of g.meshes) {
-    const p = m.geometry.attributes.position;
-    for (let i = 0; i < p.count; i += 3) { v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); if (v.y > 1.3 && Math.abs(v.x) < hw && Math.abs(v.x) > 0.08) { zs += v.z; zn++; } }
-  }
-  const zc = zn ? zs / zn : 0;
+  const v = new THREE.Vector3(); let best = null;
   for (const m of g.meshes) {
     const p = m.geometry.attributes.position;
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
-      if (Math.abs(v.z - zc) > 0.035 || v.y < 1.2 || Math.abs(v.x) > hw) continue;
-      const b = Math.round(v.x / step);
-      if (!bins.has(b) || bins.get(b) < v.y) bins.set(b, v.y);
+      if (Math.abs(v.x) > 0.025) continue;
+      if (!best || v.y > best.y) best = v.clone();
     }
   }
-  const keys = [...bins.keys()].sort((x, y) => x - y);
-  let pts = keys.map((b) => new THREE.Vector2(b * step, bins.get(b) - 0.04));
-  // smooth + keep the arc below the neck opening
-  for (let k = 0; k < 3; k++) pts = pts.map((p, i) => (i === 0 || i === pts.length - 1) ? p : new THREE.Vector2(p.x, (pts[i - 1].y + p.y * 2 + pts[i + 1].y) / 4));
-  const top = Math.max(...pts.map((p) => p.y));
-  return (profiles[g.item.model] = { pts, top, zc });
+  return (attachCache[g.item.model] = best || new THREE.Vector3(0, 1.5, 0));
 }
-
-function makeHanger(g) {
-  const { pts, top, zc } = shoulderProfile(g);
-  const grp = new THREE.Group();
-  // flat wooden arm: an extruded rounded profile swept along the shoulder line
-  const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p.x, p.y, 0)));
-  const shape = new THREE.Shape();
-  const w = 0.007, h = 0.013;
-  shape.absellipse(0, 0, w, h, 0, Math.PI * 2);
-  const arm = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { steps: 60, extrudePath: curve, bevelEnabled: false }), hangerWood);
-  arm.castShadow = true; arm.position.z = zc; grp.add(arm);
-  // brass stem rising through the collar to a closed ring around the rail rod
-  const R = 0.024; // ring radius (rod radius is 0.014)
-  const a0 = new THREE.Vector3(0, top + 0.004, zc), a1 = new THREE.Vector3(0, HOOK_Y - R, 0);
-  const len = a0.distanceTo(a1);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, len, 10), brass);
-  stem.position.copy(a0).add(a1).multiplyScalar(0.5);
-  stem.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a1.clone().sub(a0).normalize());
-  grp.add(stem);
-  const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.012, 16), brass);
-  nut.position.set(0, top + 0.008, zc); grp.add(nut);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.0032, 12, 48), brass);
-  ring.position.set(0, HOOK_Y, 0); ring.rotation.y = Math.PI / 2; ring.castShadow = true; grp.add(ring);
-  return grp;
+function ropeMat(hex) {
+  const c = new THREE.Color(hex); const hsl = {}; c.getHSL(hsl);
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.1), Math.max(0.08, hsl.l * 0.62));
+  return new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 });
+}
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _dn = new THREE.Vector3(0, -1, 0);
+function placeRope(mesh, from, dir, len) {
+  // mesh geometry hangs from its origin along -Y
+  mesh.position.copy(from);
+  mesh.quaternion.setFromUnitVectors(_dn, dir);
+  mesh.scale.set(1, Math.max(0.001, len), 1);
 }
 
 const slots = []; // {item, pivot, inner, g, hit, swing, swingV}
@@ -126,14 +102,22 @@ async function buildRail(progress) {
     const g = await makeGarment(item);
     const pivot = new THREE.Group();
     pivot.position.set(item.index * SPACING, RAIL_Y + 0.0, 0);
-    const inner = new THREE.Group(); inner.position.y = -HOOK_Y; pivot.add(inner);
+    const at = attachPoint(g);
+    const inner = new THREE.Group(); inner.position.set(0, -(at.y + ROPE), -at.z); pivot.add(inner);
     const spin = new THREE.Group(); inner.add(spin);
-    spin.add(g.root); spin.add(makeHanger(g));
+    spin.add(g.root);
+    const rm = ropeMat(item.hex);
+    const knot = new THREE.Mesh(new THREE.TorusGeometry(0.0175, 0.0034, 10, 36), rm);
+    knot.rotation.y = Math.PI / 2; knot.position.set(item.index * SPACING, RAIL_Y, 0); rail.add(knot);
+    const ropeA = new THREE.Mesh(ropeGeoDown, rm); ropeA.castShadow = true; rail.add(ropeA);
+    const ropeB = new THREE.Mesh(ropeGeoDown, rm); ropeB.castShadow = true; rail.add(ropeB);
+    const tipA = new THREE.Mesh(tipGeo, rm); rail.add(tipA);
+    const tipB = new THREE.Mesh(tipGeo, rm); rail.add(tipB);
     const hit = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.8, 0.34), hitMat);
     hit.position.y = 1.12; hit.userData.slot = slots.length; inner.add(hit);
     pivot.rotation.y = (Math.random() - 0.5) * 0.25;
     rail.add(pivot);
-    slots.push({ item, pivot, inner, spin, g, hit, swing: 0, swingV: 0, turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0 });
+    slots.push({ item, pivot, inner, spin, g, hit, at, ropeA, ropeB, tipA, tipB, rope: 'intact', tc: 0, ph: { tz: 0, wz: 0, tx: 0, wx: 0, sz: 0, vz: 0, sx: 0, vx: 0, pz: 0, pvz: 0 }, dU: restArmDirs(g), turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0, drop: 0 });
   }
 }
 
@@ -256,6 +240,7 @@ function openProduct(i) {
   document.body.classList.add('mode-product');
   target = i * SPACING;
   const s = slots[i];
+  s.rope = 'cut'; s.tc = 0; s.ph.wz += 0.9 * (Math.random() < 0.5 ? -1 : 1); s.ph.wx -= 0.7;
   fillProduct(s.item);
   productSpin = 0; spinVel = 1.2; spinIdle = 0;
   setTimeout(() => $('#product').classList.add('open'), 250);
@@ -304,7 +289,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1793979401');
+  const mod = await import('./tryon.js?v=1793980725');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it) => addToBag(it, size) });
   running = false;
   await tryon.open(item);
@@ -363,6 +348,95 @@ function showLabel(slot) {
   label.classList.add('on');
 }
 
+// ---------- physics: rope pendulum + lagging sleeves ----------
+const G = 9.8, PL = 0.58; // pendulum length: rail -> garment centre of mass
+function restArmDirs(g) {
+  g.root.updateMatrixWorld(true);
+  const out = {};
+  for (const s of ['l', 'r']) {
+    const u = g.rig.b['upperarm' + s], f = g.rig.b['forearm' + s];
+    if (!u || !f) continue;
+    const pu = g.root.worldToLocal(u.getWorldPosition(new THREE.Vector3()));
+    const pf = g.root.worldToLocal(f.getWorldPosition(new THREE.Vector3()));
+    out[s] = pf.sub(pu).normalize();
+  }
+  return out;
+}
+let railAcc = 0, prevVel = 0;
+const _e = new THREE.Euler(), _q3 = new THREE.Quaternion();
+function stepPhysics(s, dt, t) {
+  const p = s.ph;
+  // pivot accelerations: rail motion (x) and lifting toward the camera (z)
+  const ax = THREE.MathUtils.clamp(-railAcc, -9, 9) * 0.6;
+  const held = mode === 'product' && slots[selected] === s;
+  const damp = held ? 4.5 : 1.5;
+  const z = s.pivot.position.z; const vz = (z - p.pz) / Math.max(dt, 1e-3); const az = (vz - p.pvz) / Math.max(dt, 1e-3);
+  p.pz = z; p.pvz = vz;
+  const breeze = Math.sin(t * 0.9 + s.item.index * 1.9) * 0.05 + Math.sin(t * 2.3 + s.item.index) * 0.03;
+  const n = 3, h = dt / n;
+  let accZ = 0, accX = 0;
+  for (let k = 0; k < n; k++) {
+    accZ = -(G / PL) * Math.sin(p.tz) - damp * p.wz - (ax / PL) * Math.cos(p.tz) + breeze * 0.4;
+    accX = -(G / PL) * Math.sin(p.tx) - (damp + 0.3) * p.wx + (THREE.MathUtils.clamp(az, -6, 6) * 0.5 / PL) * Math.cos(p.tx);
+    p.wz += accZ * h; p.tz += p.wz * h;
+    p.wx += accX * h; p.tx += p.wx * h;
+    // sleeves: damped springs pushed by the body's angular acceleration (they lag behind)
+    const sAz = -70 * p.sz - 5 * p.vz - 1.15 * accZ;
+    const sAx = -70 * p.sx - 5 * p.vx - 1.0 * accX;
+    p.vz += sAz * h; p.sz += p.vz * h;
+    p.vx += sAx * h; p.sx += p.vx * h;
+  }
+  p.tz = THREE.MathUtils.clamp(p.tz, -0.5, 0.5); p.tx = THREE.MathUtils.clamp(p.tx, -0.4, 0.4);
+  p.sz = THREE.MathUtils.clamp(p.sz, -0.35, 0.35); p.sx = THREE.MathUtils.clamp(p.sx, -0.35, 0.35);
+  s.pivot.rotation.order = 'YXZ';
+  s.pivot.rotation.z = p.tz; s.pivot.rotation.x = p.tx;
+  // apply sleeve lag
+  const amt = Math.abs(p.sz) + Math.abs(p.sx);
+  if (amt > 2e-4 || s.armsDirty) {
+    s.armsDirty = amt > 2e-4;
+    _e.set(p.sx, 0, p.sz); _q3.setFromEuler(_e);
+    const rq = s.g.root.getWorldQuaternion(new THREE.Quaternion());
+    for (const side of ['l', 'r']) {
+      if (!s.dU[side]) continue;
+      const d = s.dU[side].clone().applyQuaternion(_q3).applyQuaternion(rq);
+      s.g.rig.aim('upperarm' + side, d, 'forearm' + side);
+    }
+  }
+}
+
+function updateRope(s, t) {
+  s.pivot.updateMatrixWorld(true);
+  const A = _a.set(s.item.index * SPACING, RAIL_Y, 0);
+  const P = s.g.root.localToWorld(_b.copy(s.at)); rail.worldToLocal(P);
+  const full = A.distanceTo(P);
+  if (s.rope === 'intact') {
+    placeRope(s.ropeA, A, _d.copy(P).sub(A).normalize(), full);
+    s.ropeB.visible = s.tipA.visible = s.tipB.visible = false;
+    return;
+  }
+  if (s.rope === 'tying') {
+    const k = THREE.MathUtils.smootherstep(s.tc, 0, 0.7);
+    const len = THREE.MathUtils.lerp(0.05, full, k);
+    placeRope(s.ropeA, A, _d.copy(P).sub(A).normalize(), len);
+    s.tipA.visible = k < 0.98; s.tipA.position.copy(A).addScaledVector(_d, len);
+    s.ropeB.visible = s.tipB.visible = false;
+    if (s.tc > 0.75) s.rope = 'intact';
+    return;
+  }
+  // cut: upper end recoils and sways, lower stub stays on the collar
+  const tc = s.tc;
+  const la = 0.055 + (ROPE * 0.55 - 0.055) * Math.exp(-tc * 9) * Math.max(0, Math.cos(tc * 7));
+  const sway = 0.55 * Math.exp(-tc * 2.6) * Math.sin(tc * 12) + Math.sin(t * 1.3) * 0.02;
+  _d.set(Math.sin(sway), -Math.cos(sway), Math.sin(sway * 0.6) * 0.4).normalize();
+  placeRope(s.ropeA, A, _d, la);
+  s.tipA.visible = true; s.tipA.position.copy(A).addScaledVector(_d, la); s.tipA.quaternion.copy(s.ropeA.quaternion);
+  const lb = 0.035 + (ROPE * 0.45 - 0.035) * Math.exp(-tc * 12);
+  const up = _up.set(0, 1, 0).applyQuaternion(s.spin.getWorldQuaternion(new THREE.Quaternion()));
+  const end = P.clone().addScaledVector(up, lb);
+  s.ropeB.visible = true; placeRope(s.ropeB, end, up.clone().negate(), lb);
+  s.tipB.visible = true; s.tipB.position.copy(end); s.tipB.quaternion.copy(s.ropeB.quaternion);
+}
+
 // ---------- loop ----------
 const clock = new THREE.Clock();
 let running = true;
@@ -381,6 +455,7 @@ function tick() {
   const prev = offset;
   offset += (target - offset) * Math.min(1, dt * 5);
   vel = (offset - prev) / Math.max(dt, 1e-3);
+  railAcc = THREE.MathUtils.clamp((vel - prevVel) / Math.max(dt, 1e-3), -40, 40); prevVel = vel;
   rail.position.x = -offset;
   const ci = Math.round(THREE.MathUtils.clamp(offset, minOff, maxOff) / SPACING);
   $('#cIdx').textContent = String(ci + 1).padStart(2, '0');
@@ -394,18 +469,21 @@ function tick() {
 
   // garments: pendulum swing from rail velocity, hover turn, product lift
   slots.forEach((s, i) => {
-    const acc = -vel * 0.9 - s.swing * 38 - s.swingV * 2.6;
-    s.swingV += acc * dt; s.swing += s.swingV * dt;
+    stepPhysics(s, dt, t);
     const isSel = mode === 'product' && selected === i;
     const isHover = hovered === i || (PHONE && mode === 'home' && i === ci);
     const phoneCur = PHONE && mode === 'home' && i === ci;
     const turnT = isSel || phoneCur ? 0 : isHover ? s.baseTurn + 0.38 : s.baseTurn + Math.sin(t * 0.4 + i) * 0.03;
     s.turn += (turnT - s.turn) * Math.min(1, dt * 3);
-    s.lift += ((isSel ? 1 : phoneCur ? 0.3 : isHover ? 0.18 : 0) - s.lift) * Math.min(1, dt * 3);
-    s.pivot.rotation.z = s.swing + Math.sin(t * 0.7 + i * 1.7) * 0.006;
+    s.tc += dt;
+    const liftT = isSel ? (s.tc > 0.38 ? 1 : 0) : phoneCur ? 0.3 : isHover ? 0.18 : 0;
+    s.lift += (liftT - s.lift) * Math.min(1, dt * 3);
+    // garment drops a little when the rope snaps, then is caught
+    s.drop = s.rope === 'cut' ? -0.1 * (1 - Math.exp(-s.tc * 11)) * Math.exp(-Math.max(0, s.tc - 0.35) * 3.5) : s.drop * Math.exp(-dt * 6);
+    if (!isSel && s.rope === 'cut' && s.lift < 0.1) { s.rope = 'tying'; s.tc = 0; }
     s.pivot.rotation.y = s.turn;
     s.pivot.position.z = s.lift * 0.85;
-    s.pivot.position.y = RAIL_Y + s.lift * 0.04;
+    s.pivot.position.y = RAIL_Y + s.lift * 0.04 + s.drop;
     if (isSel) {
       if (!drag) {
         spinIdle += dt;
@@ -419,6 +497,7 @@ function tick() {
       const r = s.spin.rotation.y; const tgt = Math.round(r / (Math.PI * 2)) * Math.PI * 2;
       s.spin.rotation.y += (tgt - r) * Math.min(1, dt * 3);
     }
+    updateRope(s, t);
   });
 
   if (!PHONE && mode === 'home' && hovered >= 0) showLabel(slots[hovered]); else hideLabel();

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1793979401';
+import { FABRICS, MODELS } from './catalog.js?v=1793980725';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -52,7 +52,7 @@ function fabricMaterial(item, orig) {
     sheen: f.sheen * 0.8, sheenRoughness: 0.6, sheenColor: sheen,
     side: THREE.DoubleSide,
   });
-  if (orig && orig.normalMap) { m.normalMap = orig.normalMap; m.normalScale = new THREE.Vector2(1, 1); }
+  if (orig && orig.normalMap) { m.normalMap = orig.normalMap; m.normalScale = new THREE.Vector2(0.6, 0.6); }
   else if (M.extra) { const e = FABRICS[M.extra]; m.normalMap = loadTex(e.map, M.extraRepeat); m.normalScale = new THREE.Vector2(M.extraScale, M.extraScale); }
   let detailMean = 0;
   if (M.detail && orig && orig.map) { m.map = orig.map; detailMean = meanLum(orig.map); }
