@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS } from './catalog.js';
+import { FABRICS, MODELS } from './catalog.js';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -28,20 +28,45 @@ function loadTex(url, repeat) {
   return texCache[key];
 }
 
-function fabricMaterial(item) {
+const lumCache = new Map();
+function meanLum(tex) {
+  if (lumCache.has(tex)) return lumCache.get(tex);
+  let v = 0.5;
+  try {
+    const img = tex.image; const c = document.createElement('canvas'); c.width = c.height = 32;
+    const x = c.getContext('2d'); x.drawImage(img, 0, 0, 32, 32);
+    const d = x.getImageData(0, 0, 32, 32).data; let s = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) { if (d[i + 3] < 10) continue; const l = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255; s += Math.pow(l, 2.2); n++; }
+    v = n ? s / n : 0.5;
+  } catch {}
+  lumCache.set(tex, v); return v;
+}
+
+function fabricMaterial(item, orig) {
   const f = FABRICS[item.fabric];
+  const M = MODELS[item.model];
   const color = new THREE.Color(item.hex);
-  const sheen = color.clone().lerp(new THREE.Color('#fff4e6'), 0.55);
+  const sheen = color.clone().lerp(new THREE.Color('#fff4e6'), 0.5);
   const m = new THREE.MeshPhysicalMaterial({
     color, roughness: f.rough, metalness: 0,
-    sheen: f.sheen, sheenRoughness: 0.6, sheenColor: sheen,
-    normalMap: loadTex(f.map, f.repeat), normalScale: new THREE.Vector2(f.normal, f.normal),
+    sheen: f.sheen * 0.8, sheenRoughness: 0.6, sheenColor: sheen,
     side: THREE.DoubleSide,
   });
-  // inside of the garment slightly darker (shadowed interior)
+  if (orig && orig.normalMap) { m.normalMap = orig.normalMap; m.normalScale = new THREE.Vector2(1, 1); }
+  else if (M.extra) { const e = FABRICS[M.extra]; m.normalMap = loadTex(e.map, M.extraRepeat); m.normalScale = new THREE.Vector2(M.extraScale, M.extraScale); }
+  let detailMean = 0;
+  if (M.detail && orig && orig.map) { m.map = orig.map; detailMean = meanLum(orig.map); }
   m.onBeforeCompile = (sh) => {
+    if (detailMean) {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `
+        #ifdef USE_MAP
+          vec4 tx = texture2D( map, vMapUv );
+          float lum = dot(tx.rgb, vec3(0.299, 0.587, 0.114));
+          diffuseColor.rgb *= clamp(mix(1.0, lum / ${detailMean.toFixed(4)}, 0.85), 0.35, 1.5);
+        #endif`);
+    }
     sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>',
-      '#include <color_fragment>\n diffuseColor.rgb *= gl_FrontFacing ? 1.0 : 0.62;');
+      '#include <color_fragment>\n diffuseColor.rgb *= gl_FrontFacing ? 1.0 : 0.6;');
   };
   return m;
 }
@@ -53,8 +78,8 @@ export async function makeGarment(item, { occlude = false } = {}) {
   const gltf = await loadModel(item.model);
   const root = SkeletonUtils.clone(gltf.scene);
   const bones = {}; const meshes = []; const occluders = [];
-  const fab = fabricMaterial(item);
-  const btn = new THREE.MeshPhysicalMaterial({ color: item.button, roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.25 });
+  const mats = new Map();
+  const fabFor = (orig) => { if (!mats.has(orig)) mats.set(orig, fabricMaterial(item, orig)); return mats.get(orig); };
   const occ = new THREE.MeshBasicMaterial({ colorWrite: false });
   root.traverse((o) => {
     if (o.isBone) bones[key(o.name)] = o;
@@ -64,14 +89,14 @@ export async function makeGarment(item, { occlude = false } = {}) {
       if (mn.startsWith('Occluder')) {
         o.material = occ; o.renderOrder = -1; o.visible = occlude; occluders.push(o);
       } else {
-        o.material = mn.startsWith('Button') ? btn : fab;
+        o.material = fabFor(o.material);
         o.castShadow = true; o.receiveShadow = true;
         meshes.push(o);
       }
     }
   });
   const rig = new Rig(root, bones);
-  return { root, rig, meshes, occluders, material: fab, item };
+  return { root, rig, meshes, occluders, item, model: MODELS[item.model] };
 }
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3();

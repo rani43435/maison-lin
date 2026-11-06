@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES } from './catalog.js';
+import { ITEMS, SIZES, CREDITS } from './catalog.js';
 import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js';
 
 const $ = (s) => document.querySelector(s);
@@ -60,10 +60,10 @@ const hangerWood = new THREE.MeshPhysicalMaterial({ color: '#c9a77e', roughness:
 }
 function makeHanger() {
   const g = new THREE.Group();
-  const pts = [[-0.215, 1.43], [-0.15, 1.475], [-0.07, 1.505], [0, 1.515], [0.07, 1.505], [0.15, 1.475], [0.215, 1.43]].map(([x, y]) => new THREE.Vector3(x, y, 0));
+  const pts = [[-0.19, 1.375], [-0.13, 1.415], [-0.06, 1.44], [0, 1.448], [0.06, 1.44], [0.13, 1.415], [0.19, 1.375]].map(([x, y]) => new THREE.Vector3(x, y, 0));
   const arm = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.011, 10), hangerWood);
   arm.scale.z = 1.8; arm.castShadow = true; g.add(arm);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.09, 8), brass); stem.position.y = 1.56; g.add(stem);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.17, 8), brass); stem.position.y = 1.53; g.add(stem);
   const hook = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.0035, 8, 32, Math.PI * 1.35), brass);
   hook.position.set(0, HOOK_Y - 0.03, 0); hook.rotation.z = -Math.PI * 0.18; g.add(hook);
   return g;
@@ -80,7 +80,6 @@ async function buildRail(progress) {
     pivot.position.set(item.index * SPACING, RAIL_Y + 0.0, 0);
     const inner = new THREE.Group(); inner.position.y = -HOOK_Y; pivot.add(inner);
     inner.add(g.root); inner.add(makeHanger());
-    g.rig.armsLocal(HANG.uL, HANG.fL, HANG.uR, HANG.fR);
     const hit = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.8, 0.34), hitMat);
     hit.position.y = 1.12; hit.userData.slot = slots.length; inner.add(hit);
     pivot.rotation.y = (Math.random() - 0.5) * 0.25;
@@ -229,6 +228,7 @@ function closeBag() { $('#bag').classList.remove('open'); $('#scrim').classList.
 let toastT;
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2200); }
 renderBag();
+$('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${t}</a><span>by ${a}</span></li>`).join('');
 
 // ---------- try-on ----------
 let tryon = null;
@@ -251,6 +251,8 @@ document.addEventListener('click', (e) => {
   const act = a.dataset.act;
   if (a.tagName === 'A') e.preventDefault();
   if (act === 'bag') openBag();
+  if (act === 'credits') $('#credits').classList.toggle('on');
+  if (act === 'closeCredits') $('#credits').classList.remove('on');
   if (act === 'closeBag' || act === 'closeAll') closeBag();
   if (act === 'closeProduct') closeProduct();
   if (act === 'home' || act === 'collection') { closeBag(); closeProduct(); if (act === 'home') target = 0; }

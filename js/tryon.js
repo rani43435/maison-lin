@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { makeGarment, SHOULDER_Y, HIPS_Y, SHOULDER_W } from './garment.js';
+import { makeGarment, HIPS_Y } from './garment.js';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -188,7 +188,8 @@ export class TryOn {
     const ppm = num / Math.max(den, 1e-3);
     const shoulderW = w[LS].distanceTo(w[RS]);
     const torsoL = f.midS.distanceTo(f.midH);
-    const k = ppm * (0.6 * shoulderW / SHOULDER_W + 0.4 * torsoL / (SHOULDER_Y - HIPS_Y)) * 1.06;
+    const M = g.model;
+    const k = ppm * (0.8 * shoulderW / M.shoulderW + 0.2 * torsoL / (M.shoulderY - HIPS_Y + 0.06));
 
     // smoothing
     const s = this.smooth || (this.smooth = { q: q.clone(), k, pos: iS.clone(), arms: null });
@@ -199,7 +200,7 @@ export class TryOn {
     root.visible = true;
     root.quaternion.copy(s.q);
     root.scale.setScalar(s.k);
-    const anchor = new THREE.Vector3(0, SHOULDER_Y, 0).multiplyScalar(s.k).applyQuaternion(s.q);
+    const anchor = new THREE.Vector3(0, g.model.shoulderY, 0).multiplyScalar(s.k).applyQuaternion(s.q);
     root.position.copy(s.pos).sub(anchor);
     root.position.z = 0;
     root.updateWorldMatrix(true, true);

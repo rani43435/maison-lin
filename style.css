@@ -139,3 +139,14 @@ body.mode-product .intro,body.mode-product .rail-hint,body.mode-product .counter
   .counter{bottom:26px}
   .rail-hint{bottom:30px;left:18px;transform:none}
 }
+
+.credits-btn{position:fixed;left:clamp(18px,4vw,48px);bottom:30px;z-index:10;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink2);opacity:.75}
+body.mode-product .credits-btn{opacity:0;pointer-events:none}
+.credits{position:fixed;left:clamp(18px,4vw,48px);bottom:64px;z-index:35;width:min(360px,calc(100% - 36px));background:var(--cream);border:1px solid var(--line);padding:26px 26px 18px;opacity:0;visibility:hidden;transform:translateY(10px);transition:all .4s var(--ease)}
+.credits.on{opacity:1;visibility:visible;transform:none}
+.credits .close{top:12px;right:12px;font-size:26px}
+.credits ul{list-style:none;margin:14px 0 4px}
+.credits li{font-size:12.5px;padding:7px 0;border-bottom:1px solid var(--line)}
+.credits li a{font-family:var(--serif);font-size:17px;font-style:italic}
+.credits li span{display:block;color:var(--ink2);font-size:11px;letter-spacing:.06em}
+@media (max-width:760px){.credits-btn{display:none}}

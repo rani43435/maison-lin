@@ -1,3 +1,17 @@
+export const MODELS = {
+  tee:   { shoulderY: 1.39, shoulderW: 0.33, detail: false, extra: 'jersey', extraRepeat: 14, extraScale: 0.35 },
+  knit:  { shoulderY: 1.379, shoulderW: 0.33, detail: false },
+  polo:  { shoulderY: 1.38, shoulderW: 0.34, detail: false, extra: 'pique', extraRepeat: 18, extraScale: 0.5 },
+  linen: { shoulderY: 1.38, shoulderW: 0.32, detail: true },
+};
+
+export const CREDITS = [
+  ['T Shirt', 'funlab117', 'https://sketchfab.com/3d-models/t-shirt-c1a3e5eb9b5445f4b7d4be82f1127eba'],
+  ['Basic sweatshirt', 'Alexander Kurmanin', 'https://sketchfab.com/3d-models/basic-sweatshirt-92800a4c11ce4b8daccb75e60035535f'],
+  ['Realistic Yellow Polo Shirt', 'MotionStudioArts', 'https://sketchfab.com/3d-models/realistic-yellow-polo-shirt-eafdb4b360f04e839df432bf7ed23877'],
+  ['Linen shirt - Scan - low poly', 'Tijerín Art Studio', 'https://sketchfab.com/3d-models/linen-shirt-scan-low-poly-57bdf801595543f09bf6688475ae370a'],
+];
+
 export const FABRICS = {
   jersey: { map: 'assets/tex/jersey_n.jpg', repeat: 7, normal: 0.45, rough: 0.92, sheen: 0.7 },
   knit:   { map: 'assets/tex/knit_n.jpg',   repeat: 2.4, normal: 1.1, rough: 0.97, sheen: 1.0 },
