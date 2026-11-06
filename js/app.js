@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS } from './catalog.js';
-import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js';
+import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793977426';
+import { makeGarment, loadModel, HANG, HOOK_Y } from './garment.js?v=1793977426';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#stage');
@@ -280,7 +280,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js');
+  const mod = await import('./tryon.js?v=1793977426');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it) => addToBag(it, size) });
   running = false;
   await tryon.open(item);

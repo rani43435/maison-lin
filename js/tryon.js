@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { makeGarment, HIPS_Y } from './garment.js';
+import { makeGarment, HIPS_Y } from './garment.js?v=1793977426';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -85,27 +85,45 @@ export class TryOn {
 
   async startCam() {
     this.facing = this.facing || 'user';
-    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: this.facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-    } catch (e) {
-      this.status('Camera access is needed for the fitting room. Please allow the camera and try again.');
-      return false;
+    if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); this.stream = null; this.video.srcObject = null; }
+    const base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+    const tries = [];
+    if (this.deviceId) tries.push({ ...base, deviceId: { exact: this.deviceId } });
+    tries.push({ ...base, facingMode: { exact: this.facing } }, { ...base, facingMode: this.facing }, true);
+    for (const video of tries) {
+      try { this.stream = await navigator.mediaDevices.getUserMedia({ video, audio: false }); break; } catch (e) { this.camErr = e; }
     }
-    const s = this.stream.getVideoTracks()[0].getSettings();
-    const rear = (s.facingMode || this.facing) === 'environment';
+    if (!this.stream) { this.status('Camera access is needed for the fitting room. Please allow the camera and try again.'); return false; }
+    const track = this.stream.getVideoTracks()[0];
+    const st = track.getSettings ? track.getSettings() : {};
+    const label = (track.label || '').toLowerCase();
+    const rear = st.facingMode ? st.facingMode === 'environment' : /back|rear|environment|rück|arrière|trasera/.test(label) || this.facing === 'environment';
     this.frame.classList.toggle('rear', rear);
     this.video.srcObject = this.stream;
-    await this.video.play();
+    this.video.setAttribute('playsinline', ''); this.video.muted = true;
+    await this.video.play().catch(() => {});
+    if (!this.video.videoWidth) await new Promise((r) => this.video.addEventListener('loadedmetadata', r, { once: true }));
     this.fit(); this.smooth = null; this.lastVT = -1;
+    // only show the switch button when there is more than one camera
+    try {
+      const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+      this.cams = cams;
+      document.querySelector('.flip').style.display = cams.length > 1 ? '' : 'none';
+    } catch {}
     return true;
   }
 
   async flip() {
     this.facing = this.facing === 'environment' ? 'user' : 'environment';
+    // prefer a camera whose label matches the wanted side
+    this.deviceId = null;
+    const want = this.facing === 'environment' ? /back|rear|environment|rück|arrière|trasera/ : /front|user|face|vorder|avant|frontal/;
+    const hit = (this.cams || []).find((c) => want.test((c.label || '').toLowerCase()));
+    if (hit) this.deviceId = hit.deviceId;
     this.status('Switching camera…');
     await this.startCam();
   }
+
 
   close() {
     this.isOpen = false;
