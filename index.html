@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Maison Lin — Autumn Collection</title>
+<meta name="description" content="Maison Lin — an atelier of linen, knit and jersey. Browse the rail in 3D and try every piece on with your camera.">
+<meta name="theme-color" content="#E9DFD2">
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./lib/three/three.module.min.js", "three/addons/": "./lib/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="grain"></div>
+<div class="vignette"></div>
+
+<div id="loader">
+  <div class="loader-mark">Maison <em>Lin</em></div>
+  <div class="loader-bar"><span></span></div>
+  <div class="loader-sub">Atelier — Est. 2026</div>
+</div>
+
+<header class="nav">
+  <a class="nav-link" href="#" data-act="collection">Collection</a>
+  <a class="logo" href="#" data-act="home">Maison <em>Lin</em></a>
+  <button class="nav-link bag-btn" data-act="bag">Bag <span id="bagCount">0</span></button>
+</header>
+
+<section id="intro" class="intro">
+  <p class="eyebrow">Autumn — Winter 2026</p>
+  <h1>Quiet pieces,<br><em>made to be worn.</em></h1>
+  <p class="intro-sub">Drag or scroll along the rail. Choose a piece, turn it in your hands, then try it on with your camera.</p>
+</section>
+
+<div id="label" class="hover-label"><span class="hl-name"></span><span class="hl-price"></span></div>
+
+<div class="rail-hint" id="railHint"><span class="line"></span>Drag to browse<span class="line"></span></div>
+<div class="counter" id="counter"><span id="cIdx">01</span> / <span id="cTot">08</span></div>
+
+<aside id="product" class="product">
+  <button class="close" data-act="closeProduct" aria-label="Close">×</button>
+  <p class="eyebrow" id="pLine"></p>
+  <h2 id="pName"></h2>
+  <p class="p-color"><span class="swatch" id="pSwatch"></span><span id="pColor"></span></p>
+  <p class="p-price" id="pPrice"></p>
+  <p class="p-desc" id="pDesc"></p>
+  <ul class="p-details" id="pDetails"></ul>
+  <div class="sizes" id="pSizes"></div>
+  <div class="p-actions">
+    <button class="btn primary" data-act="addBag">Add to bag</button>
+    <button class="btn ghost" data-act="tryOn"><span class="dot"></span>Try it on — AR</button>
+  </div>
+  <p class="p-note">Drag the piece to turn it 360°</p>
+</aside>
+
+<aside id="bag" class="bag">
+  <div class="bag-head"><h3>Your bag</h3><button class="close" data-act="closeBag" aria-label="Close">×</button></div>
+  <div id="bagItems" class="bag-items"></div>
+  <div class="bag-foot">
+    <div class="bag-total"><span>Subtotal</span><span id="bagTotal">€0</span></div>
+    <button class="btn primary" disabled>Checkout</button>
+    <p class="p-note">Demo boutique — payment is not enabled.</p>
+  </div>
+</aside>
+<div id="scrim" class="scrim" data-act="closeAll"></div>
+
+<section id="tryon" class="tryon">
+  <div class="to-frame" id="toFrame">
+    <video id="toVideo" playsinline muted></video>
+    <canvas id="toCanvas"></canvas>
+  </div>
+  <div class="to-top">
+    <div class="logo small">Maison <em>Lin</em> <span class="to-tag">Fitting room</span></div>
+    <button class="close light" data-act="closeTryOn" aria-label="Close">×</button>
+  </div>
+  <div class="to-status" id="toStatus">Preparing the fitting room…</div>
+  <div class="to-badge" id="toBadge">Back view</div>
+  <div class="to-bottom">
+    <div class="to-info"><span id="toName"></span><span id="toPrice"></span></div>
+    <div class="to-picks" id="toPicks"></div>
+    <button class="btn primary light" data-act="addBagTry">Add to bag</button>
+  </div>
+</section>
+
+<div id="toast" class="toast"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
