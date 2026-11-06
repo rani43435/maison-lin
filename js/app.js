@@ -58,15 +58,56 @@ const hangerWood = new THREE.MeshPhysicalMaterial({ color: '#c9a77e', roughness:
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.62), walnut); foot.position.set(x, 0.015, 0); foot.castShadow = true; rail.add(foot);
   }
 }
-function makeHanger() {
-  const g = new THREE.Group();
-  const pts = [[-0.19, 1.375], [-0.13, 1.415], [-0.06, 1.44], [0, 1.448], [0.06, 1.44], [0.13, 1.415], [0.19, 1.375]].map(([x, y]) => new THREE.Vector3(x, y, 0));
-  const arm = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.011, 10), hangerWood);
-  arm.scale.z = 1.8; arm.castShadow = true; g.add(arm);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.17, 8), brass); stem.position.y = 1.53; g.add(stem);
-  const hook = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.0035, 8, 32, Math.PI * 1.35), brass);
-  hook.position.set(0, HOOK_Y - 0.03, 0); hook.rotation.z = -Math.PI * 0.18; g.add(hook);
-  return g;
+const profiles = {};
+function shoulderProfile(g) {
+  if (profiles[g.item.model]) return profiles[g.item.model];
+  g.root.updateMatrixWorld(true);
+  const hw = g.model.shoulderW / 2 * 0.85, step = 0.015;
+  const bins = new Map();
+  const v = new THREE.Vector3();
+  // depth centre of the shoulder band
+  let zs = 0, zn = 0;
+  for (const m of g.meshes) {
+    const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i += 3) { v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); if (v.y > 1.3 && Math.abs(v.x) < hw && Math.abs(v.x) > 0.08) { zs += v.z; zn++; } }
+  }
+  const zc = zn ? zs / zn : 0;
+  for (const m of g.meshes) {
+    const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld);
+      if (Math.abs(v.z - zc) > 0.035 || v.y < 1.2 || Math.abs(v.x) > hw) continue;
+      const b = Math.round(v.x / step);
+      if (!bins.has(b) || bins.get(b) < v.y) bins.set(b, v.y);
+    }
+  }
+  const keys = [...bins.keys()].sort((x, y) => x - y);
+  let pts = keys.map((b) => new THREE.Vector2(b * step, bins.get(b) - 0.04));
+  // smooth + keep the arc below the neck opening
+  for (let k = 0; k < 3; k++) pts = pts.map((p, i) => (i === 0 || i === pts.length - 1) ? p : new THREE.Vector2(p.x, (pts[i - 1].y + p.y * 2 + pts[i + 1].y) / 4));
+  const top = Math.max(...pts.map((p) => p.y));
+  return (profiles[g.item.model] = { pts, top, zc });
+}
+
+function makeHanger(g) {
+  const { pts, top, zc } = shoulderProfile(g);
+  const grp = new THREE.Group(); grp.position.z = zc;
+  // flat wooden arm: an extruded rounded profile swept along the shoulder line
+  const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p.x, p.y, 0)));
+  const shape = new THREE.Shape();
+  const w = 0.007, h = 0.013;
+  shape.absellipse(0, 0, w, h, 0, Math.PI * 2);
+  const arm = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { steps: 60, extrudePath: curve, bevelEnabled: false }), hangerWood);
+  arm.castShadow = true; grp.add(arm);
+  // brass neck + hook, rising from the centre of the arm through the collar
+  const stemH = HOOK_Y - 0.045 - top;
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, stemH, 10), brass);
+  stem.position.y = top + stemH / 2; grp.add(stem);
+  const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.012, 16), brass);
+  nut.position.y = top + 0.008; grp.add(nut);
+  const hook = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.003, 10, 40, Math.PI * 1.25), brass);
+  hook.position.set(0.0, HOOK_Y - 0.026, 0); hook.rotation.z = -Math.PI * 0.12; grp.add(hook);
+  return grp;
 }
 
 const slots = []; // {item, pivot, inner, g, hit, swing, swingV}
@@ -79,12 +120,13 @@ async function buildRail(progress) {
     const pivot = new THREE.Group();
     pivot.position.set(item.index * SPACING, RAIL_Y + 0.0, 0);
     const inner = new THREE.Group(); inner.position.y = -HOOK_Y; pivot.add(inner);
-    inner.add(g.root); inner.add(makeHanger());
+    const spin = new THREE.Group(); inner.add(spin);
+    spin.add(g.root); spin.add(makeHanger(g));
     const hit = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.8, 0.34), hitMat);
     hit.position.y = 1.12; hit.userData.slot = slots.length; inner.add(hit);
     pivot.rotation.y = (Math.random() - 0.5) * 0.25;
     rail.add(pivot);
-    slots.push({ item, pivot, inner, g, hit, swing: 0, swingV: 0, turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0 });
+    slots.push({ item, pivot, inner, spin, g, hit, swing: 0, swingV: 0, turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0 });
   }
 }
 
@@ -97,7 +139,7 @@ let hovered = -1;
 const pointer = new THREE.Vector2(-9, -9);
 const ray = new THREE.Raycaster();
 let drag = null;
-let productSpin = 0, productSpinV = 0;
+let productSpin = 0, spinVel = 0, spinIdle = 0, lastMoveT = 0;
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 const camPosT = new THREE.Vector3(), camLookT = new THREE.Vector3();
 
@@ -135,7 +177,12 @@ canvas.addEventListener('pointermove', (e) => {
   const dx = e.clientX - drag.last; drag.last = e.clientX;
   drag.moved += Math.abs(dx);
   if (mode === 'home') target -= dx * 0.0042 * (innerWidth < 760 ? 1.6 : 1);
-  else if (mode === 'product') productSpinV = dx * 0.012;
+  else if (mode === 'product') {
+    const now = performance.now(); const dtE = Math.max(8, now - lastMoveT) / 1000; lastMoveT = now;
+    productSpin += dx * 0.009;
+    spinVel = THREE.MathUtils.clamp(dx * 0.009 / dtE, -8, 8);
+    spinIdle = 0;
+  }
 });
 canvas.addEventListener('pointerup', (e) => {
   canvas.classList.remove('grabbing');
@@ -186,7 +233,7 @@ function openProduct(i) {
   target = i * SPACING;
   const s = slots[i];
   fillProduct(s.item);
-  productSpin = 0; productSpinV = 0.06;
+  productSpin = 0; spinVel = 1.2; spinIdle = 0;
   setTimeout(() => $('#product').classList.add('open'), 250);
   hideLabel();
 }
@@ -315,11 +362,17 @@ function tick() {
     s.pivot.position.z = s.lift * 0.85;
     s.pivot.position.y = RAIL_Y + s.lift * 0.04;
     if (isSel) {
-      if (!drag) productSpinV += (0.0035 - productSpinV) * dt * 0.8;
-      productSpin += productSpinV; productSpinV *= drag ? 0.6 : 0.985;
-      s.g.root.rotation.y = productSpin;
+      if (!drag) {
+        spinIdle += dt;
+        spinVel *= Math.exp(-dt * 2.2);
+        const auto = THREE.MathUtils.smoothstep(spinIdle, 1.5, 3.0) * 0.32;
+        productSpin += (spinVel + auto) * dt;
+      }
+      s.spin.rotation.y += (productSpin - s.spin.rotation.y) * Math.min(1, dt * 12);
     } else {
-      s.g.root.rotation.y += (0 - s.g.root.rotation.y) * Math.min(1, dt * 3);
+      // ease back to facing front by the shortest way
+      const r = s.spin.rotation.y; const tgt = Math.round(r / (Math.PI * 2)) * Math.PI * 2;
+      s.spin.rotation.y += (tgt - r) * Math.min(1, dt * 3);
     }
   });
 
