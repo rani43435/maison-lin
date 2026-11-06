@@ -31,6 +31,7 @@ export class TryOn {
     $('#tryon').addEventListener('click', (e) => {
       const a = e.target.closest('[data-act]');
       if (a && a.dataset.act === 'closeTryOn') this.close();
+      if (a && a.dataset.act === 'flipCam') this.flip();
       if (a && a.dataset.act === 'addBagTry' && this.current) this.onAdd(this.current);
     });
     addEventListener('resize', () => this.isOpen && this.fit());
@@ -65,15 +66,7 @@ export class TryOn {
     $('#tryon').classList.add('open');
     this.status('Preparing the fitting room…');
     this.setItem(item);
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-    } catch (e) {
-      this.status('Camera access is needed for the fitting room. Please allow the camera and try again.');
-      return;
-    }
-    this.video.srcObject = this.stream;
-    await this.video.play();
-    this.fit();
+    if (!(await this.startCam())) return;
     if (!this.pose) {
       this.status('Loading the tailor…');
       const { PoseLandmarker, FilesetResolver } = await import('../lib/mediapipe/vision_bundle.mjs');
@@ -88,6 +81,30 @@ export class TryOn {
     this.status('Step back until your shoulders and hips are in view');
     this.lastTs = -1;
     this.loop();
+  }
+
+  async startCam() {
+    this.facing = this.facing || 'user';
+    if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: this.facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    } catch (e) {
+      this.status('Camera access is needed for the fitting room. Please allow the camera and try again.');
+      return false;
+    }
+    const s = this.stream.getVideoTracks()[0].getSettings();
+    const rear = (s.facingMode || this.facing) === 'environment';
+    this.frame.classList.toggle('rear', rear);
+    this.video.srcObject = this.stream;
+    await this.video.play();
+    this.fit(); this.smooth = null; this.lastVT = -1;
+    return true;
+  }
+
+  async flip() {
+    this.facing = this.facing === 'environment' ? 'user' : 'environment';
+    this.status('Switching camera…');
+    await this.startCam();
   }
 
   close() {
