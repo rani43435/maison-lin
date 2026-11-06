@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { makeGarment, HIPS_Y } from './garment.js?v=1793980725';
+import { makeGarment, HIPS_Y } from './garment.js?v=1793981200';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -14,15 +14,28 @@ export class TryOn {
     this.isOpen = false;
     this.video = $('#toVideo'); this.canvas = $('#toCanvas'); this.frame = $('#toFrame');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.scene = new THREE.Scene();
     const pm = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.7;
-    const k = new THREE.DirectionalLight('#fff3e6', 2.0); k.position.set(0.5, 1.5, 3); this.scene.add(k);
-    this.scene.add(new THREE.HemisphereLight('#fff8f0', '#8a7360', 0.6));
+    this.key = new THREE.DirectionalLight('#fff3e6', 2.0); this.key.position.set(0.5, 1.5, 3); this.scene.add(this.key);
+    this.hemi = new THREE.HemisphereLight('#fff8f0', '#8a7360', 0.6); this.scene.add(this.hemi);
+    // depth-only stand-ins for the real body: neck, head, arms and hands hide the fabric behind them
+    const occ = new THREE.MeshBasicMaterial({ colorWrite: false });
+    const cyl = new THREE.CylinderGeometry(1, 1, 1, 16, 1, true), sph = new THREE.SphereGeometry(1, 16, 12);
+    this.caps = {};
+    for (const n of ['neck', 'head', 'uaL', 'uaR', 'faL', 'faR', 'hL', 'hR']) {
+      const g = new THREE.Group();
+      const c = new THREE.Mesh(cyl, occ), a = new THREE.Mesh(sph, occ), b = new THREE.Mesh(sph, occ);
+      [c, a, b].forEach((m) => { m.renderOrder = -2; g.add(m); });
+      g.userData = { c, a, b }; g.visible = false; this.scene.add(g); this.caps[n] = g;
+    }
+    this.filters = new Map();
+    this.lightCanvas = document.createElement('canvas'); this.lightCanvas.width = 24; this.lightCanvas.height = 14;
+    this.lastLight = 0;
     this.camera = new THREE.OrthographicCamera(-1, 1, 0.5, -0.5, -20, 20);
     this.holder = new THREE.Group(); this.scene.add(this.holder);
     this.garment = null; this.current = null;
@@ -162,6 +175,58 @@ export class TryOn {
     this.renderer.render(this.scene, this.camera);
   }
 
+  // One-Euro filter: steady when still, responsive when moving
+  euro(key, x, ts, minCut = 1.2, beta = 0.02) {
+    let f = this.filters.get(key);
+    if (!f) { f = { x, dx: 0, t: ts }; this.filters.set(key, f); return x; }
+    const dt = Math.max(1e-3, ts - f.t); f.t = ts;
+    const al = (c) => { const r = 2 * Math.PI * c * dt; return r / (r + 1); };
+    const dx = (x - f.x) / dt; f.dx += al(1.0) * (dx - f.dx);
+    const cut = minCut + beta * Math.abs(f.dx) * 60;
+    f.x += al(cut) * (x - f.x);
+    return f.x;
+  }
+
+  capsule(name, A, B, r) {
+    const g = this.caps[name]; const { c, a, b } = g.userData;
+    const d = B.clone().sub(A); const L = d.length();
+    if (!(L > 1e-5) || !(r > 0)) { g.visible = false; return; }
+    g.visible = true;
+    c.position.copy(A).add(B).multiplyScalar(0.5);
+    c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    c.scale.set(r, L, r);
+    a.position.copy(A); a.scale.setScalar(r); b.position.copy(B); b.scale.setScalar(r);
+  }
+
+  // match the garment's light to the room: brightness, colour and side of the key light
+  estimateLight(lm) {
+    const now = performance.now(); if (now - this.lastLight < 250 || this.video.readyState < 2) return; this.lastLight = now;
+    const c = this.lightCanvas, x = c.getContext('2d', { willReadFrequently: true });
+    try { x.drawImage(this.video, 0, 0, c.width, c.height); } catch { return; }
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    let r = 0, g = 0, b = 0, L = 0, R = 0, nl = 0, nr = 0;
+    const lin = (v) => Math.pow(v / 255, 2.2);
+    const cx = ((lm[LS].x + lm[RS].x) / 2) * c.width;
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const lr = lin(d[i]), lg = lin(d[i + 1]), lb = lin(d[i + 2]);
+      r += lr; g += lg; b += lb;
+      const lum = 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+      if ((p % c.width) < cx) { L += lum; nl++; } else { R += lum; nr++; }
+    }
+    const n = d.length / 4; r /= n; g /= n; b /= n;
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const m = Math.max(r, g, b, 1e-4);
+    const tint = new THREE.Color(r / m, g / m, b / m).lerp(new THREE.Color(1, 1, 1), 0.45);
+    const exposure = THREE.MathUtils.clamp(0.35 + lum * 3.2, 0.35, 1.6);
+    const side = THREE.MathUtils.clamp(((R / Math.max(nr, 1)) - (L / Math.max(nl, 1))) / Math.max(lum, 0.02), -1, 1);
+    const k = this.lightK || (this.lightK = { e: exposure, s: side, t: tint.clone() });
+    k.e += (exposure - k.e) * 0.3; k.s += (side - k.s) * 0.3; k.t.lerp(tint, 0.3);
+    this.key.intensity = 1.6 * k.e; this.key.color.copy(k.t);
+    this.key.position.set(k.s * 2.2, 1.6, 2.6);
+    this.hemi.intensity = 0.55 * k.e; this.hemi.color.copy(k.t);
+    this.scene.environmentIntensity = 0.55 * k.e;
+  }
+
   apply(res) {
     const g = this.garment;
     if (!g) return;
@@ -170,11 +235,19 @@ export class TryOn {
     const ok = lm && wl && lm[LS].visibility > 0.5 && lm[RS].visibility > 0.5 && (lm[LH].visibility > 0.3 || lm[RH].visibility > 0.3);
     if (!ok) {
       this.miss = (this.miss || 0) + 1;
-      if (this.miss > 8) { g.root.visible = false; this.status('Step back until your shoulders and hips are in view'); this.smooth = null; }
+      if (this.miss > 8) { g.root.visible = false; Object.values(this.caps).forEach((c) => (c.visible = false)); this.status('Step back until your shoulders and hips are in view'); this.smooth = null; }
       return;
     }
     this.miss = 0;
     this.status(null);
+    const ts = performance.now() / 1000;
+    const IDS = [NOSE, LEYE, REYE, LEAR, REAR, LS, RS, LE, RE, LW, RW, 19, 20, LH, RH];
+    const flm = [], fwl = [];
+    for (const i of IDS) {
+      flm[i] = { x: this.euro('ix' + i, lm[i].x, ts), y: this.euro('iy' + i, lm[i].y, ts), visibility: lm[i].visibility };
+      fwl[i] = { x: this.euro('wx' + i, wl[i].x, ts), y: this.euro('wy' + i, wl[i].y, ts), z: this.euro('wz' + i, wl[i].z, ts, 0.8, 0.01) };
+    }
+    this.estimateLight(lm);
 
     // back view: face landmarks disappear
     const face = (lm[NOSE].visibility + lm[LEYE].visibility + lm[REYE].visibility) / 3;
@@ -184,10 +257,10 @@ export class TryOn {
     $('#toBadge').classList.toggle('on', this.back);
 
     // image -> ortho coords, world -> three coords (unmirrored view, y up, z toward camera)
-    const P = (i) => new THREE.Vector3((lm[i].x - 0.5) * this.aspect, 0.5 - lm[i].y, 0);
-    const Wv = (i) => new THREE.Vector3(wl[i].x, -wl[i].y, -wl[i].z);
+    const P = (i) => new THREE.Vector3((flm[i].x - 0.5) * this.aspect, 0.5 - flm[i].y, 0);
+    const Wv = (i) => new THREE.Vector3(fwl[i].x, -fwl[i].y, -fwl[i].z);
     let img = {}, w = {};
-    for (const i of [LS, RS, LE, RE, LW, RW, LH, RH]) { img[i] = P(i); w[i] = Wv(i); }
+    for (const i of IDS) { img[i] = P(i); w[i] = Wv(i); }
 
     // torso frame
     const frame = () => {
@@ -202,13 +275,13 @@ export class TryOn {
     let f = frame();
     // the model may keep "front" labels when the person turns around; fix handedness
     if (this.back && f.Z.z > 0) {
-      for (const [a, b] of [[LS, RS], [LE, RE], [LW, RW], [LH, RH]]) {
+      for (const [a, b] of [[LS, RS], [LE, RE], [LW, RW], [LH, RH], [19, 20], [LEAR, REAR]]) {
         [img[a], img[b]] = [img[b], img[a]]; [w[a], w[b]] = [w[b], w[a]];
       }
       f = frame();
     } else if (!this.back && f.Z.z < -0.2) {
       // mirrored labels while facing: swap too
-      for (const [a, b] of [[LS, RS], [LE, RE], [LW, RW], [LH, RH]]) {
+      for (const [a, b] of [[LS, RS], [LE, RE], [LW, RW], [LH, RH], [19, 20], [LEAR, REAR]]) {
         [img[a], img[b]] = [img[b], img[a]]; [w[a], w[b]] = [w[b], w[a]];
       }
       f = frame();
@@ -228,8 +301,7 @@ export class TryOn {
 
     // smoothing
     const s = this.smooth || (this.smooth = { q: q.clone(), k, pos: iS.clone(), arms: null });
-    const a = 0.45;
-    s.q.slerp(q, a); s.k += (k - s.k) * a; s.pos.lerp(iS, 0.6);
+    s.q.slerp(q, 0.7); s.k += (k - s.k) * 0.5; s.pos.lerp(iS, 0.85);
 
     const root = g.root;
     root.visible = true;
@@ -237,7 +309,7 @@ export class TryOn {
     root.scale.setScalar(s.k);
     const anchor = new THREE.Vector3(0, g.model.shoulderY, 0).multiplyScalar(s.k).applyQuaternion(s.q);
     root.position.copy(s.pos).sub(anchor);
-    root.position.z = 0;
+    root.position.z = -anchor.z;
     root.updateWorldMatrix(true, true);
 
     // arms (world directions)
@@ -253,5 +325,23 @@ export class TryOn {
     if (!s.arms) s.arms = arms.map((v) => v.clone());
     s.arms.forEach((v, i) => v.lerp(arms[i], 0.5).normalize());
     g.rig.armsWorld(s.arms[0], s.arms[1], s.arms[2], s.arms[3]);
+
+    // body occluders in the same space as the garment (shoulder centre at z = 0)
+    const zRef = (w[LS].z + w[RS].z) / 2;
+    const B3 = (i) => new THREE.Vector3(img[i].x, img[i].y, (w[i].z - zRef) * ppm);
+    const m = ppm; // metres -> image units
+    const sMid = B3(LS).add(B3(RS)).multiplyScalar(0.5);
+    const ears = vis(LEAR) || vis(REAR) ? B3(vis(LEAR) ? LEAR : REAR).add(B3(vis(REAR) ? REAR : LEAR)).multiplyScalar(0.5) : sMid.clone().add(new THREE.Vector3(0, 0.2 * m, 0));
+    const neckBase = sMid.clone().lerp(ears, 0.12); neckBase.z -= 0.02 * m;
+    this.capsule('neck', neckBase, ears, 0.058 * m);
+    this.capsule('head', ears, ears.clone().add(new THREE.Vector3(0, 0.08 * m, 0)), 0.095 * m);
+    // arms only occlude when they are in front of the body (crossed arms, hand on the chest)
+    const front = (i) => (w[i].z - zRef) > 0.07;
+    const sideCap = (sd, S, E, Wr, H) => {
+      this.caps['ua' + sd].visible = false;
+      if (vis(E) && vis(Wr) && front(Wr)) this.capsule('fa' + sd, B3(E), B3(Wr), 0.034 * m); else this.caps['fa' + sd].visible = false;
+      if (vis(Wr) && vis(H) && front(H)) this.capsule('h' + sd, B3(Wr), B3(H), 0.042 * m); else this.caps['h' + sd].visible = false;
+    };
+    sideCap('L', LS, LE, LW, 19); sideCap('R', RS, RE, RW, 20);
   }
 }
