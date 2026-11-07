@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794059632';
+import { FABRICS, MODELS } from './catalog.js?v=1794060210';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -130,7 +130,8 @@ export class Rig {
   constructor(root, bones) {
     this.root = root; this.b = bones;
     this.rest = {};
-    for (const k in bones) this.rest[k] = bones[k].quaternion.clone();
+    this.restPos = {};
+    for (const k in bones) { this.rest[k] = bones[k].quaternion.clone(); this.restPos[k] = bones[k].position.clone(); }
   }
   reset() { for (const k in this.b) this.b[k].quaternion.copy(this.rest[k]); }
   // rotate a bone about an axis given in the garment root's frame (used for hem sway / drape)

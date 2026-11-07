@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794059632';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794059632';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794060210';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794060210';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -28,7 +28,7 @@ export class TryOn {
     const occ = new THREE.MeshBasicMaterial({ colorWrite: false });
     const cyl = new THREE.CylinderGeometry(1, 1, 1, 16, 1, true), sph = new THREE.SphereGeometry(1, 16, 12);
     this.caps = {};
-    for (const n of ['neck', 'head', 'uaL', 'uaR', 'faL', 'faR', 'hL', 'hR']) {
+    for (const n of ['neck', 'head', 'jaw', 'uaL', 'uaR', 'faL', 'faR', 'hL', 'hR']) {
       const g = new THREE.Group();
       const c = new THREE.Mesh(cyl, occ), a = new THREE.Mesh(sph, occ), b = new THREE.Mesh(sph, occ);
       [c, a, b].forEach((m) => { m.renderOrder = -2; g.add(m); });
@@ -249,7 +249,7 @@ export class TryOn {
     this.miss = 0;
     this.status(null);
     const ts = performance.now() / 1000;
-    const IDS = [NOSE, LEYE, REYE, LEAR, REAR, LS, RS, LE, RE, LW, RW, 19, 20, LH, RH];
+    const IDS = [NOSE, LEYE, REYE, LEAR, REAR, 9, 10, LS, RS, LE, RE, LW, RW, 19, 20, LH, RH];
     const flm = [], fwl = [];
     for (const i of IDS) {
       flm[i] = { x: this.euro('ix' + i, lm[i].x, ts), y: this.euro('iy' + i, lm[i].y, ts), visibility: lm[i].visibility };
@@ -315,45 +315,48 @@ export class TryOn {
     root.visible = true;
     root.quaternion.copy(s.q);
     root.scale.setScalar(s.k);
-    const anchor = new THREE.Vector3(0, g.model.shoulderY, 0).multiplyScalar(s.k).applyQuaternion(s.q);
+    const anchor = new THREE.Vector3(0, g.model.shoulderY + 0.035, 0).multiplyScalar(s.k).applyQuaternion(s.q);
     root.position.copy(s.pos).sub(anchor);
     root.position.z = -anchor.z;
     root.updateWorldMatrix(true, true);
 
-    // arms (world directions)
-    const dir = (a, b) => w[b].clone().sub(w[a]).normalize();
-    const arms = [dir(LS, LE), dir(LE, LW), dir(RS, RE), dir(RE, RW)];
-    // if elbows/wrists are not visible, let the sleeves hang
+    // shared space: image x/y plus depth from the 3D landmarks (shoulder centre at z = 0)
     const vis = (i) => lm[i].visibility > 0.4;
+    const zRef = (w[LS].z + w[RS].z) / 2;
+    const B3 = (i) => new THREE.Vector3(img[i].x, img[i].y, (w[i].z - zRef) * ppm);
+    const m = ppm; // metres -> image units
     const down = f.Y.clone().negate();
-    if (!vis(LE)) arms[0] = down.clone().add(f.X.clone().multiplyScalar(0.3)).normalize();
-    if (!vis(LW)) arms[1] = arms[0].clone();
-    if (!vis(RE)) arms[2] = down.clone().add(f.X.clone().multiplyScalar(-0.3)).normalize();
-    if (!vis(RW)) arms[3] = arms[2].clone();
-    // loose fabric sags a little under gravity instead of tracking the arm exactly
-    arms[0].add(down.clone().multiplyScalar(0.12)).normalize(); arms[2].add(down.clone().multiplyScalar(0.12)).normalize();
-    arms[1].add(down.clone().multiplyScalar(0.2)).normalize(); arms[3].add(down.clone().multiplyScalar(0.2)).normalize();
-    if (!s.arms) s.arms = arms.map((v) => v.clone());
-    s.arms.forEach((v, i) => v.lerp(arms[i], 0.5).normalize());
-    g.rig.armsWorld(s.arms[0], s.arms[1], s.arms[2], s.arms[3]);
 
-    // sleeve length follows the person's arms so cuffs end at the wrists
+    // sleeves: pivot sits on the real shoulder, each segment points along the real arm in the image,
+    // and is stretched so the elbow and the cuff land on the elbow and the wrist
     {
-      const M = g.model, mpp = s.k / ppm; // metres per model unit
-      const fit = (name, person, model, prev) => THREE.MathUtils.clamp(person / Math.max(1e-3, model * mpp), 0.8, 1.3);
-      const sc = s.armScale || (s.armScale = { lu: 1, lf: 1, ru: 1, rf: 1 });
-      const tgt = {
-        lu: vis(LE) ? fit('lu', w[LS].distanceTo(w[LE]), M.upper) : 1,
-        ru: vis(RE) ? fit('ru', w[RS].distanceTo(w[RE]), M.upper) : 1,
-        lf: !M.short && vis(LE) && vis(LW) ? fit('lf', w[LE].distanceTo(w[LW]), M.fore) : 1,
-        rf: !M.short && vis(RE) && vis(RW) ? fit('rf', w[RE].distanceTo(w[RW]), M.fore) : 1,
-      };
-      for (const k in sc) sc[k] += (tgt[k] - sc[k]) * 0.2;
-      const b = g.rig.b;
-      if (b.upperarml) b.upperarml.scale.setScalar(sc.lu);
-      if (b.upperarmr) b.upperarmr.scale.setScalar(sc.ru);
-      if (b.forearml) b.forearml.scale.setScalar(sc.lf / sc.lu);
-      if (b.forearmr) b.forearmr.scale.setScalar(sc.rf / sc.ru);
+      const M = g.model, rig = g.rig;
+      if (!s.armv) s.armv = {};
+      for (const [sd, S, E, Wr, sx] of [['l', LS, LE, LW, 1], ['r', RS, RE, RW, -1]]) {
+        const ub = rig.b['upperarm' + sd], fb = rig.b['forearm' + sd];
+        if (!ub || !fb) continue;
+        const S3 = B3(S);
+        const outward = f.X.clone().multiplyScalar(sx * 0.012 * m);
+        ub.position.copy(rig.restPos['upperarm' + sd]);
+        ub.parent.updateWorldMatrix(true, false);
+        const tgtLocal = ub.parent.worldToLocal(S3.clone().add(outward));
+        ub.position.lerp(tgtLocal, 0.85);
+        const hang = down.clone().add(f.X.clone().multiplyScalar(0.3 * sx)).normalize();
+        let u = vis(E) ? B3(E).sub(S3) : hang.clone().multiplyScalar(M.upper * s.k);
+        let fo = vis(E) && vis(Wr) ? B3(Wr).sub(B3(E)) : u.clone().normalize().multiplyScalar(M.fore * s.k);
+        const Lu = u.length(), Lf = fo.length();
+        // loose fabric sags a little instead of tracking the arm exactly
+        u.normalize().addScaledVector(down, 0.06).normalize();
+        fo.normalize().addScaledVector(down, 0.1).normalize();
+        const st = s.armv[sd] || (s.armv[sd] = { u: u.clone(), f: fo.clone(), su: 1, sf: 1 });
+        st.u.lerp(u, 0.55).normalize(); st.f.lerp(fo, 0.55).normalize();
+        const su = THREE.MathUtils.clamp(Lu / Math.max(1e-4, M.upper * s.k), 0.75, 1.35);
+        const sf = M.short ? 1 : THREE.MathUtils.clamp(Lf / Math.max(1e-4, M.fore * s.k), 0.75, 1.35);
+        st.su += (su - st.su) * 0.3; st.sf += (sf - st.sf) * 0.3;
+        ub.scale.setScalar(st.su); fb.scale.setScalar(st.sf / st.su);
+        rig.aim('upperarm' + sd, st.u, 'forearm' + sd);
+        rig.aim('forearm' + sd, st.f, null);
+      }
     }
 
     // drape: the hem lags behind body motion and settles, so the fabric never looks rigid
@@ -371,16 +374,20 @@ export class TryOn {
     g.rig.bend('spine', zAxis, h.z * 0.5);
     g.rig.bend('hips', zAxis, h.z);
 
-    // body occluders in the same space as the garment (shoulder centre at z = 0)
-    const zRef = (w[LS].z + w[RS].z) / 2;
-    const B3 = (i) => new THREE.Vector3(img[i].x, img[i].y, (w[i].z - zRef) * ppm);
-    const m = ppm; // metres -> image units
+    // body occluders
     const sMid = B3(LS).add(B3(RS)).multiplyScalar(0.5);
     const ears = vis(LEAR) || vis(REAR) ? B3(vis(LEAR) ? LEAR : REAR).add(B3(vis(REAR) ? REAR : LEAR)).multiplyScalar(0.5) : sMid.clone().add(new THREE.Vector3(0, 0.2 * m, 0));
     // neck sits behind the front collar: thinner and pushed back so the collar wraps around it cleanly
     const neckBase = sMid.clone().lerp(ears, 0.22); neckBase.z -= 0.045 * m;
     const neckTop = ears.clone(); neckTop.z -= 0.02 * m;
     this.capsule('neck', neckBase, neckTop, 0.05 * m);
+    // chin and beard come in front of the collar
+    if (vis(NOSE) && vis(9) && vis(10)) {
+      const nose = B3(NOSE), mouth = B3(9).add(B3(10)).multiplyScalar(0.5);
+      const chin = mouth.clone().addScaledVector(mouth.clone().sub(nose), 1.15);
+      nose.z -= 0.03 * m; chin.z -= 0.015 * m;
+      this.capsule('jaw', nose, chin, 0.05 * m);
+    } else this.caps.jaw.visible = false;
     const hc = ears.clone().add(new THREE.Vector3(0, 0.035 * m, -0.03 * m));
     this.capsule('head', hc, hc.clone().add(new THREE.Vector3(0, 0.07 * m, 0)), 0.085 * m);
     // arms only occlude when they are in front of the body (crossed arms, hand on the chest)

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE } from './catalog.js?v=1794059632';
-import { makeGarment, loadModel } from './garment.js?v=1794059632';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE } from './catalog.js?v=1794060210';
+import { makeGarment, loadModel } from './garment.js?v=1794060210';
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -290,7 +290,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794059632');
+  const mod = await import('./tryon.js?v=1794060210');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
