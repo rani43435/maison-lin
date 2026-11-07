@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE } from './catalog.js?v=1794059215';
-import { makeGarment, loadModel } from './garment.js?v=1794059215';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE } from './catalog.js?v=1794059632';
+import { makeGarment, loadModel } from './garment.js?v=1794059632';
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -290,7 +290,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794059215');
+  const mod = await import('./tryon.js?v=1794059632');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
@@ -439,11 +439,8 @@ function updateRope(s, t) {
   _d.set(Math.sin(sway), -Math.cos(sway), Math.sin(sway * 0.6) * 0.4).normalize();
   placeRope(s.ropeA, A, _d, la);
   s.tipA.visible = true; s.tipA.position.copy(A).addScaledVector(_d, la); s.tipA.quaternion.copy(s.ropeA.quaternion);
-  const lb = 0.035 + (ROPE * 0.45 - 0.035) * Math.exp(-tc * 12);
-  const up = _up.set(0, 1, 0).applyQuaternion(s.spin.getWorldQuaternion(new THREE.Quaternion()));
-  const end = P.clone().addScaledVector(up, lb);
-  s.ropeB.visible = true; placeRope(s.ropeB, end, up.clone().negate(), lb);
-  s.tipB.visible = true; s.tipB.position.copy(end); s.tipB.quaternion.copy(s.ropeB.quaternion);
+  // the cut piece leaves with the rope, nothing stays on the garment
+  s.ropeB.visible = s.tipB.visible = false;
 }
 
 // ---------- loop ----------

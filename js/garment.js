@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794059215';
+import { FABRICS, MODELS } from './catalog.js?v=1794059632';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -64,7 +64,7 @@ function fabricMaterial(item, orig) {
     Object.assign(sh.uniforms, {
       detailMap: { value: detailTex }, foldMap: { value: foldTex },
       detailRepeat: { value: M.detailRepeat || 14 }, foldRepeat: { value: 1.6 },
-      detailScale: { value: 0.35 * (dt.normal || 0.5) }, foldScale: { value: 0.22 },
+      detailScale: { value: 0.35 * (dt.normal || 0.5) }, foldScale: { value: 0.12 },
     });
     sh.fragmentShader = 'uniform sampler2D detailMap; uniform sampler2D foldMap; uniform float detailRepeat; uniform float foldRepeat; uniform float detailScale; uniform float foldScale;\n' + sh.fragmentShader;
     sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
