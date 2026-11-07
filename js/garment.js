@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794058054';
+import { FABRICS, MODELS } from './catalog.js?v=1794059215';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -56,7 +56,33 @@ function fabricMaterial(item, orig) {
   else if (M.extra) { const e = FABRICS[M.extra]; m.normalMap = loadTex(e.map, M.extraRepeat); m.normalScale = new THREE.Vector2(M.extraScale, M.extraScale); }
   let detailMean = 0;
   if (M.detail && orig && orig.map) { m.map = orig.map; detailMean = meanLum(orig.map); }
+  // fabric weave + soft drape folds layered on top of the model's own normals
+  const dt = FABRICS[M.detailTex] || FABRICS.jersey;
+  const detailTex = loadTex(dt.map, 1), foldTex = loadTex('assets/tex/folds_n.jpg', 1);
+  m.defines = { ...(m.defines || {}), USE_UV: '' };
   m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, {
+      detailMap: { value: detailTex }, foldMap: { value: foldTex },
+      detailRepeat: { value: M.detailRepeat || 14 }, foldRepeat: { value: 1.6 },
+      detailScale: { value: 0.35 * (dt.normal || 0.5) }, foldScale: { value: 0.22 },
+    });
+    sh.fragmentShader = 'uniform sampler2D detailMap; uniform sampler2D foldMap; uniform float detailRepeat; uniform float foldRepeat; uniform float detailScale; uniform float foldScale;\n' + sh.fragmentShader;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      {
+        vec3 N0 = normal;
+        vec3 q0 = dFdx( - vViewPosition ), q1 = dFdy( - vViewPosition );
+        vec2 st0 = dFdx( vUv ), st1 = dFdy( vUv );
+        vec3 q1perp = cross( q1, N0 ), q0perp = cross( N0, q0 );
+        vec3 T = q1perp * st0.x + q0perp * st1.x;
+        vec3 B = q1perp * st0.y + q0perp * st1.y;
+        float det = max( dot( T, T ), dot( B, B ) );
+        float sc = ( det == 0.0 ) ? 0.0 : inversesqrt( det );
+        vec3 d1 = texture2D( detailMap, vUv * detailRepeat ).xyz * 2.0 - 1.0;
+        vec3 d2 = texture2D( foldMap, vUv * foldRepeat ).xyz * 2.0 - 1.0;
+        vec2 dxy = d1.xy * detailScale + d2.xy * foldScale;
+        normal = normalize( N0 + ( T * dxy.x + B * dxy.y ) * sc );
+        if ( !gl_FrontFacing ) normal = normalize( mix( normal, nonPerturbedNormal, 0.85 ) );
+      }`);
     if (detailMean) {
       sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `
         #ifdef USE_MAP

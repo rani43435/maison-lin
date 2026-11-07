@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794058054';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794058054';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794059215';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794059215';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -337,6 +337,25 @@ export class TryOn {
     s.arms.forEach((v, i) => v.lerp(arms[i], 0.5).normalize());
     g.rig.armsWorld(s.arms[0], s.arms[1], s.arms[2], s.arms[3]);
 
+    // sleeve length follows the person's arms so cuffs end at the wrists
+    {
+      const M = g.model, mpp = s.k / ppm; // metres per model unit
+      const fit = (name, person, model, prev) => THREE.MathUtils.clamp(person / Math.max(1e-3, model * mpp), 0.8, 1.3);
+      const sc = s.armScale || (s.armScale = { lu: 1, lf: 1, ru: 1, rf: 1 });
+      const tgt = {
+        lu: vis(LE) ? fit('lu', w[LS].distanceTo(w[LE]), M.upper) : 1,
+        ru: vis(RE) ? fit('ru', w[RS].distanceTo(w[RE]), M.upper) : 1,
+        lf: !M.short && vis(LE) && vis(LW) ? fit('lf', w[LE].distanceTo(w[LW]), M.fore) : 1,
+        rf: !M.short && vis(RE) && vis(RW) ? fit('rf', w[RE].distanceTo(w[RW]), M.fore) : 1,
+      };
+      for (const k in sc) sc[k] += (tgt[k] - sc[k]) * 0.2;
+      const b = g.rig.b;
+      if (b.upperarml) b.upperarml.scale.setScalar(sc.lu);
+      if (b.upperarmr) b.upperarmr.scale.setScalar(sc.ru);
+      if (b.forearml) b.forearml.scale.setScalar(sc.lf / sc.lu);
+      if (b.forearmr) b.forearmr.scale.setScalar(sc.rf / sc.ru);
+    }
+
     // drape: the hem lags behind body motion and settles, so the fabric never looks rigid
     const now = ts; const dtp = Math.min(0.1, Math.max(0.008, now - (s.lastT || now - 0.033))); s.lastT = now;
     const vx = (s.pos.x - (s.px ?? s.pos.x)) / dtp / Math.max(s.k, 1e-3); s.px = s.pos.x;
@@ -358,15 +377,19 @@ export class TryOn {
     const m = ppm; // metres -> image units
     const sMid = B3(LS).add(B3(RS)).multiplyScalar(0.5);
     const ears = vis(LEAR) || vis(REAR) ? B3(vis(LEAR) ? LEAR : REAR).add(B3(vis(REAR) ? REAR : LEAR)).multiplyScalar(0.5) : sMid.clone().add(new THREE.Vector3(0, 0.2 * m, 0));
-    const neckBase = sMid.clone().lerp(ears, 0.12); neckBase.z -= 0.02 * m;
-    this.capsule('neck', neckBase, ears, 0.058 * m);
-    this.capsule('head', ears, ears.clone().add(new THREE.Vector3(0, 0.08 * m, 0)), 0.095 * m);
+    // neck sits behind the front collar: thinner and pushed back so the collar wraps around it cleanly
+    const neckBase = sMid.clone().lerp(ears, 0.22); neckBase.z -= 0.045 * m;
+    const neckTop = ears.clone(); neckTop.z -= 0.02 * m;
+    this.capsule('neck', neckBase, neckTop, 0.05 * m);
+    const hc = ears.clone().add(new THREE.Vector3(0, 0.035 * m, -0.03 * m));
+    this.capsule('head', hc, hc.clone().add(new THREE.Vector3(0, 0.07 * m, 0)), 0.085 * m);
     // arms only occlude when they are in front of the body (crossed arms, hand on the chest)
     const front = (i) => (w[i].z - zRef) > 0.07;
     const sideCap = (sd, S, E, Wr, H) => {
       this.caps['ua' + sd].visible = false;
       if (vis(E) && vis(Wr) && front(Wr)) this.capsule('fa' + sd, B3(E), B3(Wr), 0.034 * m); else this.caps['fa' + sd].visible = false;
-      if (vis(Wr) && vis(H) && front(H)) this.capsule('h' + sd, B3(Wr), B3(H), 0.042 * m); else this.caps['h' + sd].visible = false;
+      // hands always come out of the cuff, so they are drawn over the sleeve end
+      if (vis(Wr) && vis(H)) { const a = B3(Wr), b = B3(H); a.z += 0.05 * m; b.z += 0.05 * m; this.capsule('h' + sd, a.lerp(b, 0.15), b, 0.045 * m); } else this.caps['h' + sd].visible = false;
     };
     sideCap('L', LS, LE, LW, 19); sideCap('R', RS, RE, RW, 20);
   }

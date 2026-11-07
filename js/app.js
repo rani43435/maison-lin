@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1794058054';
-import { makeGarment, loadModel } from './garment.js?v=1794058054';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE } from './catalog.js?v=1794059215';
+import { makeGarment, loadModel } from './garment.js?v=1794059215';
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -237,7 +237,7 @@ $('#pSizes').addEventListener('click', (e) => {
   size = b.dataset.size; fillProduct(slots[selected].item);
 });
 function openProduct(i) {
-  selected = i; mode = 'product';
+  selected = i; mode = 'product'; size = 'M';
   document.body.classList.add('mode-product');
   target = i * SPACING;
   const s = slots[i];
@@ -290,7 +290,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794058054');
+  const mod = await import('./tryon.js?v=1794059215');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
@@ -494,6 +494,10 @@ function tick() {
     s.pivot.rotation.y = s.turn;
     s.pivot.position.z = s.lift * 0.85;
     s.pivot.position.y = RAIL_Y + s.lift * 0.04 + s.drop;
+    // the chosen size scales the piece you are looking at (M is the reference)
+    const sc = isSel ? (SIZE_SCALE[size] || 1) : 1;
+    s.spin.scale.setScalar(THREE.MathUtils.lerp(s.spin.scale.x, sc, Math.min(1, dt * 6)));
+    s.spin.position.y = 1.15 * (1 - s.spin.scale.x);
     if (isSel) {
       if (!drag) {
         spinIdle += dt;

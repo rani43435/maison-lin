@@ -1,10 +1,10 @@
 export const MODELS = {
-  tee:   { shoulderY: 1.39, shoulderW: 0.33, detail: false, extra: 'jersey', extraRepeat: 14, extraScale: 0.35 },
-  knit:  { shoulderY: 1.379, shoulderW: 0.33, detail: false },
-  polo:  { shoulderY: 1.38, shoulderW: 0.34, detail: false, extra: 'pique', extraRepeat: 18, extraScale: 0.5 },
-  linen: { shoulderY: 1.38, shoulderW: 0.32, detail: true },
-  hoodie: { shoulderY: 1.45, shoulderW: 0.32, detail: true },
-  'hoodie-pocket': { shoulderY: 1.44, shoulderW: 0.30, detail: false, extra: 'fleece', extraRepeat: 9, extraScale: 0.3 },
+  tee:   { upper: 0.299, fore: 0.26, short: true, detailTex: 'jersey', detailRepeat: 22, shoulderY: 1.39, shoulderW: 0.33, detail: false, extra: 'jersey', extraRepeat: 14, extraScale: 0.35 },
+  knit:  { upper: 0.30, fore: 0.254, detailTex: 'knit', detailRepeat: 9, shoulderY: 1.379, shoulderW: 0.33, detail: false },
+  polo:  { upper: 0.319, fore: 0.289, detailTex: 'pique', detailRepeat: 20, shoulderY: 1.38, shoulderW: 0.34, detail: false, extra: 'pique', extraRepeat: 18, extraScale: 0.5 },
+  linen: { upper: 0.299, fore: 0.262, short: true, detailTex: 'linen', detailRepeat: 12, shoulderY: 1.38, shoulderW: 0.32, detail: true },
+  hoodie: { upper: 0.238, fore: 0.226, detailTex: 'fleece', detailRepeat: 14, shoulderY: 1.45, shoulderW: 0.32, detail: true },
+  'hoodie-pocket': { upper: 0.279, fore: 0.26, detailTex: 'fleece', detailRepeat: 14, shoulderY: 1.44, shoulderW: 0.30, detail: false, extra: 'fleece', extraRepeat: 9, extraScale: 0.3 },
 };
 
 export const CREDITS = [
@@ -20,7 +20,7 @@ export const FABRICS = {
   jersey: { map: 'assets/tex/jersey_n.jpg', repeat: 7, normal: 0.45, rough: 0.92, sheen: 0.7 },
   knit:   { map: 'assets/tex/knit_n.jpg',   repeat: 2.4, normal: 1.1, rough: 0.97, sheen: 1.0 },
   linen:  { map: 'assets/tex/linen_n.jpg',  repeat: 3.2, normal: 0.7, rough: 0.88, sheen: 0.5 },
-  fleece: { map: 'assets/tex/jersey_n.jpg', repeat: 9, normal: 0.3, rough: 0.97, sheen: 1.0 },
+  fleece: { map: 'assets/tex/fleece_n.jpg', repeat: 9, normal: 0.6, rough: 0.97, sheen: 1.0 },
   pique:  { map: 'assets/tex/pique_n.jpg',  repeat: 6.5, normal: 0.6, rough: 0.9,  sheen: 0.7 },
 };
 

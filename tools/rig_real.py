@@ -7,7 +7,7 @@ J = {
   'knit':  dict(S=(0.165, 1.379), E=(0.3465, 1.1645), W=(0.506, 0.983), dec=1.0),
   'polo':  dict(S=(0.170, 1.38), E=(0.270, 1.100), W=(0.360, 0.840), dec=0.6),
   'linen': dict(S=(0.160, 1.38), E=(0.364, 1.188), W=(0.546, 1.017), dec=1.0),
-  'hoodie2': dict(S=(0.160, 1.45), E=(0.220, 1.22), W=(0.270, 1.00), dec=0.25, nooversize=True),
+  'hoodie2': dict(S=(0.160, 1.45), E=(0.220, 1.22), W=(0.270, 1.00), dec=0.4, nooversize=True),
   'hoodie3': dict(S=(0.150, 1.44), E=(0.350, 1.245), W=(0.537, 1.064), dec=1.0, nooversize=True),
 }
 OUT = '/home/claude/maison-lin/assets'
@@ -19,9 +19,10 @@ def seg_dist(P, a, b):
     ab = b - a; t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
     return np.linalg.norm(P - (a + t[:, None] * ab), axis=1), t
 
+SUBDIV = ('linen', 'hoodie3')
 SMOOTH = {'tee': 3, 'knit': 2, 'polo': 0, 'linen': 6, 'hoodie2': 2, 'hoodie3': 0}
 OVERSIZE = True
-OV = dict(width=0.17, depth=0.10, length=0.10, drop=0.55, sleeve=0.07, hem=0.06)
+OV = dict(width=0.16, depth=0.10, length=0.10, drop=0.15, sleeve=0.05, hem=0.06)
 
 def arm_weight(V, j, sl, tagged):
     x, y, z = V[:, 0], V[:, 1], V[:, 2]
@@ -43,11 +44,11 @@ def ov_point(p, a, j, sgn):
     Sx, Sz = j['S']
     ztop = 1.40
     # torso: wider, deeper, longer and boxier toward the hem
-    k = 1 + OV['width'] + OV['hem'] * sm(1.3, 0.9, z)
+    k = 1 + OV['width'] * (1 - 0.75 * sm(1.18, 1.40, z)) + OV['hem'] * sm(1.3, 0.9, z)
     tx, ty = x * k, y * (1 + OV['depth'])
     tz = z if z > ztop else ztop - (ztop - z) * (1 + OV['length'])
     # sleeves: moved out with the dropped shoulder, slightly lower, a bit longer
-    dx = sgn * Sx * OV['width'] * (1 + OV['drop'])
+    dx = sgn * Sx * OV['width'] * 0.25 * (1 + OV['drop'])
     sx_, sy_, sz_ = x + dx, y * (1 + OV['depth'] * 0.5), z - 0.02
     return np.array([tx * (1 - a) + sx_ * a, ty * (1 - a) + sy_ * a, tz * (1 - a) + sz_ * a])
 
@@ -105,6 +106,10 @@ def main(n):
         m = ob.modifiers.new('cs', 'CORRECTIVE_SMOOTH'); m.iterations = it; m.factor = 0.5; m.use_only_smooth = True; m.smooth_type = 'LENGTH_WEIGHTED'
         dg = bpy.context.evaluated_depsgraph_get()
         me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg)); ob.modifiers.clear(); ob.data = me
+    if n in SUBDIV:
+        m = ob.modifiers.new('ss', 'SUBSURF'); m.levels = 1; m.render_levels = 1
+        dg = bpy.context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg)); ob.modifiers.clear(); ob.data = me
     V = np.array([v.co for v in ob.data.vertices])
     sl = np.array([d.value for d in ob.data.attributes['sleeve'].data]) if 'sleeve' in ob.data.attributes else np.zeros(len(V))
     tagged = sl.max() > 0.5
@@ -151,7 +156,9 @@ def main(n):
         tt = (V[m] - S) @ u
         if tagged:
             a = sl[m].copy()
-            a = np.maximum(a, (1 - sm(0.0, 0.07, np.abs(tt))) * sm(-0.06, 0.0, tt) * 0.0)
+            # torso around the armhole follows the sleeve so the shoulder cap doesn't poke through
+            dS = np.linalg.norm(V[m] - S, axis=1)
+            a = np.maximum(a, (1 - sm(0.04, 0.13, dS)) * sm(-0.07, 0.03, tt) * 0.85)
         else:
             nA = d / 0.075
             a = sm(-0.35, 0.35, nT[m] - nA) * sm(-0.05, 0.03, tt)
@@ -179,7 +186,7 @@ def main(n):
     # occluder: torso part pulled 2.2cm toward the vertical axis
     occ_me = ob.data.copy(); occ = bpy.data.objects.new('Body', occ_me); sc.collection.objects.link(occ)
     occ.vertex_groups.clear()
-    bm_keep = armw < 0.3
+    bm_keep = (armw < 0.3) & (V[:, 2] < j['S'][1] + 0.02)
     import bmesh
     bm = bmesh.new(); bm.from_mesh(occ_me); bm.verts.ensure_lookup_table()
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not bm_keep[v.index]], context='VERTS')
@@ -197,6 +204,7 @@ def main(n):
             if w > 0.003: occ_vg[k].add([i], float(w), 'REPLACE')
     m2 = occ.modifiers.new('arm', 'ARMATURE'); m2.object = rig; occ.parent = rig
 
+    for p in ob.data.polygons: p.use_smooth = True
     # strip textures we don't use (keep normal maps; keep base colour only for linen detail)
     for mat in ob.data.materials:
         if not mat or not mat.use_nodes: continue
@@ -218,7 +226,8 @@ def main(n):
     bpy.ops.export_scene.gltf(filepath=f'{OUT}/{n}.glb', export_format='GLB', use_selection=True, export_skins=True,
                               export_animations=False, export_materials='EXPORT', export_image_format='AUTO',
                               export_jpeg_quality=85, export_attributes=False)
-    info = dict(shoulderY=j['S'][1], shoulderW=2 * j['S'][0], verts=len(V))
+    S_, E_, W_ = np.array(j['S']), np.array(j['E']), np.array(j['W'])
+    info = dict(shoulderY=j['S'][1], shoulderW=2 * j['S'][0], upper=float(np.linalg.norm(E_ - S_)), fore=float(np.linalg.norm(W_ - E_)), verts=len(V))
     print('DONE', n, info)
     return info
 
