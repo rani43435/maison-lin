@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { makeGarment, HIPS_Y } from './garment.js?v=1793981200';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794058054';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794058054';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -9,8 +10,8 @@ const NOSE = 0, LEYE = 2, REYE = 5, LEAR = 7, REAR = 8, LS = 11, RS = 12, LE = 1
 const PAIRS = [[1, 4], [2, 5], [3, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22], [23, 24], [25, 26], [27, 28], [29, 30], [31, 32]];
 
 export class TryOn {
-  constructor({ items, onAdd }) {
-    this.items = items; this.onAdd = onAdd;
+  constructor({ items, onAdd, getSize, setSize }) {
+    this.items = items; this.onAdd = onAdd; this.getSize = getSize || (() => 'M'); this.setSize = setSize || (() => {});
     this.isOpen = false;
     this.video = $('#toVideo'); this.canvas = $('#toCanvas'); this.frame = $('#toFrame');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
@@ -45,9 +46,15 @@ export class TryOn {
       const a = e.target.closest('[data-act]');
       if (a && a.dataset.act === 'closeTryOn') this.close();
       if (a && a.dataset.act === 'flipCam') this.flip();
-      if (a && a.dataset.act === 'addBagTry' && this.current) this.onAdd(this.current);
+      if (a && a.dataset.act === 'addBagTry' && this.current) this.onAdd(this.current, this.getSize());
+      const sb = e.target.closest('[data-tsize]'); if (sb) { this.setSize(sb.dataset.tsize); this.renderSizes(); }
     });
     addEventListener('resize', () => this.isOpen && this.fit());
+  }
+
+  renderSizes() {
+    const cur = this.getSize();
+    $('#toSizes').innerHTML = SIZES.map((s) => `<button data-tsize="${s}" class="${s === cur ? 'on' : ''}">${s}</button>`).join('');
   }
 
   buildPicks() {
@@ -79,6 +86,7 @@ export class TryOn {
     $('#tryon').classList.add('open');
     this.status('Preparing the fitting room…');
     this.setItem(item);
+    this.renderSizes();
     if (!(await this.startCam())) return;
     if (!this.pose) {
       this.status('Loading the tailor…');
@@ -297,7 +305,7 @@ export class TryOn {
     const shoulderW = w[LS].distanceTo(w[RS]);
     const torsoL = f.midS.distanceTo(f.midH);
     const M = g.model;
-    const k = ppm * (0.8 * shoulderW / M.shoulderW + 0.2 * torsoL / (M.shoulderY - HIPS_Y + 0.06));
+    const k = ppm * (0.8 * shoulderW / M.shoulderW + 0.2 * torsoL / (M.shoulderY - HIPS_Y + 0.06)) * (SIZE_SCALE[this.getSize()] || 1);
 
     // smoothing
     const s = this.smooth || (this.smooth = { q: q.clone(), k, pos: iS.clone(), arms: null });
@@ -322,9 +330,27 @@ export class TryOn {
     if (!vis(LW)) arms[1] = arms[0].clone();
     if (!vis(RE)) arms[2] = down.clone().add(f.X.clone().multiplyScalar(-0.3)).normalize();
     if (!vis(RW)) arms[3] = arms[2].clone();
+    // loose fabric sags a little under gravity instead of tracking the arm exactly
+    arms[0].add(down.clone().multiplyScalar(0.12)).normalize(); arms[2].add(down.clone().multiplyScalar(0.12)).normalize();
+    arms[1].add(down.clone().multiplyScalar(0.2)).normalize(); arms[3].add(down.clone().multiplyScalar(0.2)).normalize();
     if (!s.arms) s.arms = arms.map((v) => v.clone());
     s.arms.forEach((v, i) => v.lerp(arms[i], 0.5).normalize());
     g.rig.armsWorld(s.arms[0], s.arms[1], s.arms[2], s.arms[3]);
+
+    // drape: the hem lags behind body motion and settles, so the fabric never looks rigid
+    const now = ts; const dtp = Math.min(0.1, Math.max(0.008, now - (s.lastT || now - 0.033))); s.lastT = now;
+    const vx = (s.pos.x - (s.px ?? s.pos.x)) / dtp / Math.max(s.k, 1e-3); s.px = s.pos.x;
+    const ax = (vx - (s.pvx ?? vx)) / dtp; s.pvx = vx;
+    const h = s.hem || (s.hem = { z: 0, v: 0, x: 0, xv: 0 });
+    const sub = 4, hh = dtp / sub;
+    for (let i = 0; i < sub; i++) {
+      const az = -120 * h.z - 9 * h.v + THREE.MathUtils.clamp(ax, -40, 40) * 0.012 + Math.sin(now * 1.7) * 0.02;
+      h.v += az * hh; h.z += h.v * hh;
+    }
+    h.z = THREE.MathUtils.clamp(h.z, -0.14, 0.14);
+    const zAxis = new THREE.Vector3(0, 0, 1), xAxis = new THREE.Vector3(1, 0, 0);
+    g.rig.bend('spine', zAxis, h.z * 0.5);
+    g.rig.bend('hips', zAxis, h.z);
 
     // body occluders in the same space as the garment (shoulder centre at z = 0)
     const zRef = (w[LS].z + w[RS].z) / 2;

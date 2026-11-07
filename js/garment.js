@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1793981200';
+import { FABRICS, MODELS } from './catalog.js?v=1794058054';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -107,6 +107,20 @@ export class Rig {
     for (const k in bones) this.rest[k] = bones[k].quaternion.clone();
   }
   reset() { for (const k in this.b) this.b[k].quaternion.copy(this.rest[k]); }
+  // rotate a bone about an axis given in the garment root's frame (used for hem sway / drape)
+  bend(name, axisRoot, angle) {
+    const bone = this.b[name]; if (!bone) return;
+    if (!this.relRest) {
+      this.relRest = {};
+      const saved = {}; for (const k in this.b) { saved[k] = this.b[k].quaternion.clone(); this.b[k].quaternion.copy(this.rest[k]); }
+      this.root.updateMatrixWorld(true);
+      const rinv = this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
+      for (const k in this.b) this.relRest[k] = rinv.clone().multiply(this.b[k].getWorldQuaternion(new THREE.Quaternion()));
+      for (const k in this.b) this.b[k].quaternion.copy(saved[k]);
+    }
+    const ax = axisRoot.clone().applyQuaternion(this.relRest[name].clone().invert()).normalize();
+    bone.quaternion.copy(this.rest[name]).multiply(_q.setFromAxisAngle(ax, angle));
+  }
   // aim a bone so its rest direction points along worldDir (minimal rotation from rest)
   aim(name, worldDir, childName, slerp = 1) {
     const bone = this.b[name]; if (!bone) return;

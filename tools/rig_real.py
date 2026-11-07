@@ -7,6 +7,8 @@ J = {
   'knit':  dict(S=(0.165, 1.379), E=(0.3465, 1.1645), W=(0.506, 0.983), dec=1.0),
   'polo':  dict(S=(0.170, 1.38), E=(0.270, 1.100), W=(0.360, 0.840), dec=0.6),
   'linen': dict(S=(0.160, 1.38), E=(0.364, 1.188), W=(0.546, 1.017), dec=1.0),
+  'hoodie2': dict(S=(0.160, 1.45), E=(0.220, 1.22), W=(0.270, 1.00), dec=0.25, nooversize=True),
+  'hoodie3': dict(S=(0.150, 1.44), E=(0.350, 1.245), W=(0.537, 1.064), dec=1.0, nooversize=True),
 }
 OUT = '/home/claude/maison-lin/assets'
 
@@ -17,7 +19,7 @@ def seg_dist(P, a, b):
     ab = b - a; t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
     return np.linalg.norm(P - (a + t[:, None] * ab), axis=1), t
 
-SMOOTH = {'tee': 3, 'knit': 2, 'polo': 0, 'linen': 6}
+SMOOTH = {'tee': 3, 'knit': 2, 'polo': 0, 'linen': 6, 'hoodie2': 2, 'hoodie3': 0}
 OVERSIZE = True
 OV = dict(width=0.17, depth=0.10, length=0.10, drop=0.55, sleeve=0.07, hem=0.06)
 
@@ -106,7 +108,7 @@ def main(n):
     V = np.array([v.co for v in ob.data.vertices])
     sl = np.array([d.value for d in ob.data.attributes['sleeve'].data]) if 'sleeve' in ob.data.attributes else np.zeros(len(V))
     tagged = sl.max() > 0.5
-    if OVERSIZE:
+    if OVERSIZE and not j.get('nooversize'):
         j = oversize(ob, V, sl, tagged, dict(j))
         V = np.array([v.co for v in ob.data.vertices])
 
@@ -118,9 +120,10 @@ def main(n):
     def B(name, h, t, parent=None):
         b = eb.new(name); b.head = h; b.tail = t; b.roll = 0
         if parent: b.parent = eb[parent]
-    B('hips', (0, 0, 0.95), (0, 0, 1.10))
-    B('spine', (0, 0, 1.10), (0, 0, 1.26), 'hips')
-    B('chest', (0, 0, 1.26), (0, 0, 1.42), 'spine')
+    # chest is the root and the chain hangs downward, so the hem can lag/sway without moving the shoulders
+    B('chest', (0, 0, 1.42), (0, 0, 1.26))
+    B('spine', (0, 0, 1.26), (0, 0, 1.10), 'chest')
+    B('hips', (0, 0, 1.10), (0, 0, 0.95), 'spine')
     B('neck', (0, 0, 1.42), (0, 0, 1.56), 'chest')
     pts = {}
     for s, sx in (('L', 1), ('R', -1)):
@@ -201,7 +204,7 @@ def main(n):
         bsdf = next((x for x in nt.nodes if x.type == 'BSDF_PRINCIPLED'), None)
         if not bsdf: continue
         for inp in ('Base Color', 'Metallic', 'Roughness', 'Alpha', 'Specular IOR Level'):
-            if n != 'linen' or inp != 'Base Color':
+            if n not in ('linen', 'hoodie2') or inp != 'Base Color':
                 for l in list(bsdf.inputs[inp].links): nt.links.remove(l)
         if n == 'polo':
             for l in list(bsdf.inputs['Normal'].links): nt.links.remove(l)

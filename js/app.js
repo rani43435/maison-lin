@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1793981200';
-import { makeGarment, loadModel } from './garment.js?v=1793981200';
+import { ITEMS, SIZES, CREDITS } from './catalog.js?v=1794058054';
+import { makeGarment, loadModel } from './garment.js?v=1794058054';
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -97,7 +97,8 @@ const slots = []; // {item, pivot, inner, g, hit, swing, swingV}
 const hitMat = new THREE.MeshBasicMaterial({ visible: false });
 async function buildRail(progress) {
   let done = 0;
-  await Promise.all([...new Set(ITEMS.map((i) => i.model))].map((m) => loadModel(m).then(() => progress(++done / 4))));
+  const models = [...new Set(ITEMS.map((i) => i.model))];
+  await Promise.all(models.map((m) => loadModel(m).then(() => progress(++done / models.length))));
   for (const item of ITEMS) {
     const g = await makeGarment(item);
     const pivot = new THREE.Group();
@@ -117,7 +118,7 @@ async function buildRail(progress) {
     hit.position.y = 1.12; hit.userData.slot = slots.length; inner.add(hit);
     pivot.rotation.y = (Math.random() - 0.5) * 0.25;
     rail.add(pivot);
-    slots.push({ item, pivot, inner, spin, g, hit, at, ropeA, ropeB, tipA, tipB, rope: 'intact', tc: 0, ph: { tz: 0, wz: 0, tx: 0, wx: 0, sz: 0, vz: 0, sx: 0, vx: 0, pz: 0, pvz: 0 }, dU: restArmDirs(g), turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0, drop: 0 });
+    slots.push({ item, pivot, inner, spin, g, hit, at, ropeA, ropeB, tipA, tipB, rope: 'intact', tc: 0, ph: { tz: 0, wz: 0, tx: 0, wx: 0, sz: 0, vz: 0, sx: 0, vx: 0, pz: 0, pvz: 0, hz: 0, hv: 0 }, dU: restArmDirs(g), armsDirty: true, turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0, drop: 0 });
   }
 }
 
@@ -152,7 +153,7 @@ function homeCamera() {
   }
   const hf = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
   const dist = Math.max(4.4, 3.6 / 2 / Math.tan(hf / 2));
-  camPosT.set(0, 1.66, dist); camLookT.set(0, 1.56, 0);
+  camPosT.set(-0.62, 1.66, dist); camLookT.set(-0.62, 1.56, 0);
 }
 function productCamera(slot) {
   const p = new THREE.Vector3(); slot.pivot.getWorldPosition(p);
@@ -289,8 +290,8 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1793981200');
-  if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it) => addToBag(it, size) });
+  const mod = await import('./tryon.js?v=1794058054');
+  if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
 }
@@ -350,6 +351,7 @@ function showLabel(slot) {
 
 // ---------- physics: rope pendulum + lagging sleeves ----------
 const G = 9.8, PL = 0.58; // pendulum length: rail -> garment centre of mass
+// sleeves hang straight down under their own weight (a little away from the body)
 function restArmDirs(g) {
   g.root.updateMatrixWorld(true);
   const out = {};
@@ -358,21 +360,23 @@ function restArmDirs(g) {
     if (!u || !f) continue;
     const pu = g.root.worldToLocal(u.getWorldPosition(new THREE.Vector3()));
     const pf = g.root.worldToLocal(f.getWorldPosition(new THREE.Vector3()));
-    out[s] = pf.sub(pu).normalize();
+    const rest = pf.sub(pu).normalize();
+    const sx = Math.sign(rest.x) || (s === 'l' ? 1 : -1);
+    out[s] = new THREE.Vector3(0.24 * sx, -1, rest.z * 0.3 + 0.02).normalize();
   }
   return out;
 }
 let railAcc = 0, prevVel = 0;
-const _e = new THREE.Euler(), _q3 = new THREE.Quaternion();
+const _e = new THREE.Euler(), _q3 = new THREE.Quaternion(), _zAxis = new THREE.Vector3(0, 0, 1);
 function stepPhysics(s, dt, t) {
   const p = s.ph;
   // pivot accelerations: rail motion (x) and lifting toward the camera (z)
-  const ax = THREE.MathUtils.clamp(-railAcc, -9, 9) * 0.6;
+  const ax = THREE.MathUtils.clamp(-railAcc, -9, 9) * 0.12;
   const held = mode === 'product' && slots[selected] === s;
-  const damp = held ? 4.5 : 1.5;
+  const damp = held ? 4.5 : 2.8;
   const z = s.pivot.position.z; const vz = (z - p.pz) / Math.max(dt, 1e-3); const az = (vz - p.pvz) / Math.max(dt, 1e-3);
   p.pz = z; p.pvz = vz;
-  const breeze = Math.sin(t * 0.9 + s.item.index * 1.9) * 0.05 + Math.sin(t * 2.3 + s.item.index) * 0.03;
+  const breeze = Math.sin(t * 0.7 + s.item.index * 1.9) * 0.012;
   const n = 3, h = dt / n;
   let accZ = 0, accX = 0;
   for (let k = 0; k < n; k++) {
@@ -381,8 +385,11 @@ function stepPhysics(s, dt, t) {
     p.wz += accZ * h; p.tz += p.wz * h;
     p.wx += accX * h; p.tx += p.wx * h;
     // sleeves: damped springs pushed by the body's angular acceleration (they lag behind)
-    const sAz = -70 * p.sz - 5 * p.vz - 1.15 * accZ;
-    const sAx = -70 * p.sx - 5 * p.vx - 1.0 * accX;
+    const sAz = -110 * p.sz - 8 * p.vz - 0.35 * accZ;
+    const sAx = -110 * p.sx - 8 * p.vx - 0.3 * accX;
+    // hem: the lower body lags a touch behind the swing
+    const hA = -140 * p.hz - 9 * p.hv - 0.25 * accZ;
+    p.hv += hA * h; p.hz += p.hv * h;
     p.vz += sAz * h; p.sz += p.vz * h;
     p.vx += sAx * h; p.sx += p.vx * h;
   }
@@ -390,6 +397,8 @@ function stepPhysics(s, dt, t) {
   p.sz = THREE.MathUtils.clamp(p.sz, -0.35, 0.35); p.sx = THREE.MathUtils.clamp(p.sx, -0.35, 0.35);
   s.pivot.rotation.order = 'YXZ';
   s.pivot.rotation.z = p.tz; s.pivot.rotation.x = p.tx;
+  p.hz = THREE.MathUtils.clamp(p.hz, -0.12, 0.12);
+  if (Math.abs(p.hz) > 1e-4 || s.hemDirty) { s.hemDirty = Math.abs(p.hz) > 1e-4; s.g.rig.bend('spine', _zAxis, p.hz * 0.6); s.g.rig.bend('hips', _zAxis, p.hz); }
   // apply sleeve lag
   const amt = Math.abs(p.sz) + Math.abs(p.sx);
   if (amt > 2e-4 || s.armsDirty) {
@@ -460,6 +469,7 @@ function tick() {
   const ci = Math.round(THREE.MathUtils.clamp(offset, minOff, maxOff) / SPACING);
   $('#cIdx').textContent = String(ci + 1).padStart(2, '0');
   updatePhoneBar(ci);
+  document.body.classList.toggle('scrolled', offset > SPACING * 0.45);
 
   // hover
   if (mode === 'home' && !drag && !PHONE) {

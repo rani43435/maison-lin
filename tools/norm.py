@@ -5,6 +5,9 @@ CFG = {
  'knit':  dict(drop=[], sleeves=[]),
  'polo':  dict(drop=[], sleeves=['Yellow Shirt_Arms_0']),
  'linen': dict(drop=['Object_3'], sleeves=[]),
+ 'hoodie': dict(drop=[], sleeves=[]),
+ 'hoodie2': dict(drop=[], sleeves=[], dedupe=True),
+ 'hoodie3': dict(drop=[], sleeves=[]),
 }
 n=sys.argv[1]; yaw_extra=float(sys.argv[2]) if len(sys.argv)>2 else 0
 c=CFG[n]
@@ -17,6 +20,14 @@ for o in meshes:
     if o.name in c['drop']: bpy.data.objects.remove(o); continue
 # bake transforms & tag sleeve
 meshes=[o for o in sc.objects if o.type=='MESH']
+if c.get('dedupe'):
+    seen={}
+    for o in sorted(meshes,key=lambda o:o.name):
+        bb=[o.matrix_world@Vector(cc) for cc in o.bound_box]
+        key=tuple(round(sum(v[i] for v in bb)/8,2) for i in range(3))+tuple(round(max(v[i] for v in bb)-min(v[i] for v in bb),2) for i in range(3))
+        if key in seen: bpy.data.objects.remove(o)
+        else: seen[key]=o
+    meshes=[o for o in sc.objects if o.type=='MESH']
 for o in meshes:
     me=o.data
     me.transform(o.matrix_world)
@@ -30,6 +41,9 @@ for o in meshes: o.select_set(True)
 bpy.context.view_layer.objects.active=meshes[0]
 bpy.ops.object.join()
 ob=bpy.context.active_object; ob.name='Shirt'
+if len(ob.data.vertices)>60000:
+    m=ob.modifiers.new('d','DECIMATE'); m.ratio=60000/len(ob.data.vertices)
+    dg=bpy.context.evaluated_depsgraph_get(); me=bpy.data.meshes.new_from_object(ob.evaluated_get(dg)); ob.modifiers.clear(); ob.data=me
 V=np.array([v.co for v in ob.data.vertices])
 # up axis: assume +z after gltf import; check extents
 ext=V.max(0)-V.min(0)
