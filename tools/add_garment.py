@@ -651,6 +651,12 @@ def main():
     json.dump(items, open(pj, 'w'), indent=1, ensure_ascii=False)
     print(f'✓ added {gid}: {a.name} — {a.color} €{a.price}  colour {hexc}')
     print(f'  {len(items)} custom piece(s) in assets/custom/products.json')
+    # keep the AR body occluder inside the garment in every standard arm pose (see tools/occluder.py)
+    try:
+        from occluder import fix_glb
+        fix_glb(os.path.join(OUT, f'{gid}.glb'), posed_id=gid)
+    except Exception as e:
+        print('  occluder fit skipped (needs playwright + chromium):', str(e)[:120])
 
 
 if __name__ == '__main__':

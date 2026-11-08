@@ -1,0 +1,61 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Maison Lin QC render</title>
+<base href="../../"><script type="importmap">{ "imports": { "three": "./lib/three/three.module.min.js", "three/addons/": "./lib/three/addons/" } }</script></head>
+<body style="margin:0;background:#E9DFD2"><canvas id="c" width="1500" height="1000"></canvas>
+<script type="module">
+// QC renders for one garment: standard arm poses × angles, with the AR occluder off (look) or on (see-through test).
+// Used by tools/qc/clipping.py; served from the repo root so the site's own modules and assets load.
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { loadCatalog, ITEMS } from './js/catalog.js?v=1794148031';
+import { makeGarment, texturesReady, HANG } from './js/garment.js?v=1794148031';
+const c = document.getElementById('c');
+const R = new THREE.WebGLRenderer({ canvas: c, antialias: true, preserveDrawingBuffer: true });
+R.toneMapping = THREE.ACESFilmicToneMapping;
+const S = new THREE.Scene(); S.environment = new THREE.PMREMGenerator(R).fromScene(new RoomEnvironment(), 0.04).texture;
+const L = new THREE.DirectionalLight('#fff', 2); L.position.set(1, 2, 3); S.add(L);
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const POSES = {
+  hang: HANG,
+  tight: { uL: V(0.12, -1, 0), fL: V(0.05, -1, 0.05), uR: V(-0.12, -1, 0), fR: V(-0.05, -1, 0.05) },
+  front: { uL: V(0.2, -1, 0.5), fL: V(-0.6, 0.2, 1), uR: V(-0.2, -1, 0.5), fR: V(0.6, 0.2, 1) },
+  t: { uL: V(1, -0.15, 0), fL: V(1, -0.1, 0), uR: V(-1, -0.15, 0), fR: V(-1, -0.1, 0) },
+};
+let catalog = null;
+window.run = async (id, pose, angles, occ) => {
+  catalog = catalog || loadCatalog(); await catalog;
+  const it = ITEMS.find((i) => i.id === id); if (!it) throw new Error('no item ' + id);
+  const g = await makeGarment(it, { occlude: occ === 1 });
+  // occ 2: outside faces only, so any tear in the garment shows the background
+  if (occ === 2) g.meshes.forEach((m) => { m.material.side = THREE.FrontSide; m.material.needsUpdate = true; }); await texturesReady(); await new Promise((r) => setTimeout(r, 500));
+  S.children.filter((o) => o.userData.g).forEach((o) => S.remove(o));
+  R.setClearColor(occ ? '#ff00ff' : '#E9DFD2');
+  const P = POSES[pose]; const out = [];
+  const grp = new THREE.Group(); grp.userData.g = 1; grp.add(g.root); S.add(grp);
+  for (const a of angles) {
+    grp.rotation.y = a * Math.PI / 180;
+    g.rig.reset(); if (P) g.rig.armsLocal(P.uL, P.fL, P.uR, P.fR);
+    const cam = new THREE.PerspectiveCamera(30, 1.5, 0.1, 20); cam.position.set(0, 1.2, 2.6); cam.lookAt(0, 1.2, 0);
+    R.render(S, cam); out.push(c.toDataURL('image/png'));
+  }
+  return out;
+};
+// garment vertices in each pose (garment root space) + how much each follows the arm: used by tools/occluder.py
+window.posed = async (id, poses) => {
+  catalog = catalog || loadCatalog(); await catalog;
+  const it = ITEMS.find((i) => i.id === id); if (!it) throw new Error('no item ' + id);
+  const g = await makeGarment(it, { occlude: false });
+  const out = { arm: [], poses: {} }; const v = new THREE.Vector3();
+  for (const m of g.meshes) {
+    const SI = m.geometry.attributes.skinIndex, SW = m.geometry.attributes.skinWeight, bones = m.skeleton.bones;
+    for (let i = 0; i < SI.count; i++) { let a = 0; for (let k = 0; k < 4; k++) { const b = bones[SI.getComponent(i, k)]; if (b && /arm/i.test(b.name)) a += SW.getComponent(i, k); } out.arm.push(+a.toFixed(3)); }
+  }
+  for (const pose of poses) {
+    g.rig.reset(); const P = POSES[pose]; if (P) g.rig.armsLocal(P.uL, P.fL, P.uR, P.fR);
+    g.root.updateMatrixWorld(true); const inv = g.root.matrixWorld.clone().invert(); const arr = [];
+    for (const m of g.meshes) { m.skeleton.update(); const n = m.geometry.attributes.position.count; for (let i = 0; i < n; i++) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld).applyMatrix4(inv); arr.push(+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)); } }
+    out.poses[pose || 'rest'] = arr;
+  }
+  return out;
+};
+window.ready = true;
+</script></body></html>
