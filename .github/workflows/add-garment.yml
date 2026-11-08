@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.13' }
-      - run: pip install numpy pillow scipy rembg onnxruntime opencv-python-headless bpy gradio_client
+      - run: pip install numpy pillow scipy rembg onnxruntime opencv-python-headless && pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: python3 tools/process_inbox.py
       - run: bash tools/bump.sh || true
       - run: |

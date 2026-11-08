@@ -33,7 +33,7 @@
   "base": "knit",
   "name": "Le Pull Onyx",
   "color": "Cacao",
-  "hex": "#705048",
+  "hex": "#705047",
   "price": 240,
   "fabric": "knit",
   "line": "Maille — Atelier",
@@ -52,12 +52,12 @@
     "Wash cold, dry flat"
    ]
   ],
-  "glb": "assets/custom/le-pull-onyx-cacao.glb?v=1794146006",
-  "texture": "assets/custom/le-pull-onyx-cacao.jpg?v=1794146006",
-  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg?v=1794146006",
+  "glb": "assets/custom/le-pull-onyx-cacao.glb?v=1794147777",
+  "texture": "assets/custom/le-pull-onyx-cacao.jpg?v=1794147777",
+  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg?v=1794147777",
   "model": {
    "shoulderY": 1.366,
-   "shoulderW": 0.306,
+   "shoulderW": 0.309,
    "upper": 0.346,
    "fore": 0.298
   },

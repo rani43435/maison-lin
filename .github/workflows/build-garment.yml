@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.13' }
-      - run: pip install numpy pillow scipy scikit-image rembg onnxruntime opencv-python-headless bpy
+      - run: pip install numpy pillow scipy rembg onnxruntime opencv-python-headless && pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: python3 tools/build_from_supabase.py "${{ github.event.client_payload.id || inputs.id }}"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

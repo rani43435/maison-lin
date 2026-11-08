@@ -40,9 +40,39 @@ DEFAULTS = {
 
 
 # ---------------------------------------------------------------- photo ----
+def sharpen_source(img, target=1900):
+    """crop to the garment and, if the photo is small, upscale it with Real-ESRGAN so the print stays crisp"""
+    a = np.asarray(img).astype(np.float32)
+    border = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]]); bg = np.median(border, 0)
+    fg = np.abs(a - bg).max(2) > 18
+    ys, xs = np.nonzero(fg)
+    if len(ys) > 100:
+        p = int(0.05 * max(img.size))
+        img = img.crop((max(xs.min() - p, 0), max(ys.min() - p, 0), min(xs.max() + p, img.width), min(ys.max() + p, img.height)))
+    if max(img.size) < target * 0.75 and not os.environ.get('NO_UPSCALE'):
+        import time; t = time.time()
+        try:
+            sys.path.insert(0, os.path.dirname(__file__)); from upscale import upscale
+            big = upscale(np.asarray(img))
+        except Exception as e:
+            print('  upscale failed:', e); big = None
+        if big is not None:
+            # AI detail only on the print/logos (where colour differs strongly from the fabric); the knit itself stays the photo's own
+            base = np.asarray(img.resize((big.shape[1], big.shape[0]), Image.BICUBIC)).astype(np.float32)
+            lum = base @ np.array([0.299, 0.587, 0.114], np.float32)
+            gm = np.abs(base - bg).max(2) > 18
+            med = np.median(lum[gm]) if gm.any() else np.median(lum)
+            from scipy import ndimage as ndi
+            m = ndi.binary_dilation((np.abs(lum - med) > 38) & gm, iterations=10).astype(np.float32)
+            m = ndi.gaussian_filter(m, 5)[..., None]
+            img = Image.fromarray((base * (1 - m) + big.astype(np.float32) * m).clip(0, 255).astype(np.uint8))
+            print(f'  upscaled print {big.shape[1]}x{big.shape[0]} in {time.time() - t:.0f}s ({m.mean() * 100:.0f}% AI)')
+    img.thumbnail((target, target), Image.LANCZOS)
+    return img
+
+
 def cutout(path):
-    img = Image.open(path).convert('RGB')
-    img.thumbnail((1600, 1600))
+    img = sharpen_source(Image.open(path).convert('RGB'))
     a = None
     try:
         from rembg import remove, new_session
@@ -240,8 +270,9 @@ def acc_read(js, bin_, i):
     return arr.copy(), a
 
 
-def write_glb(path, js, arrays):
-    """arrays: list of (numpy array, accessor-template dict, target or None); rebuilds buffer + views + accessors"""
+def write_glb(path, js, arrays, images=()):
+    """arrays: list of (numpy array, accessor-template dict, target or None); rebuilds buffer + views + accessors.
+    images: raw bytes for js['images'][i] (embedded after the accessors)"""
     blob = bytearray(); views = []; accs = []
     for arr, tmpl, target in arrays:
         while len(blob) % 4: blob.append(0)
@@ -254,6 +285,10 @@ def write_glb(path, js, arrays):
         if tmpl.get('type') == 'VEC3' and tmpl.get('componentType') == 5126 and 'min' in tmpl:
             a['min'] = arr.min(0).astype(float).tolist(); a['max'] = arr.max(0).astype(float).tolist()
         accs.append(a)
+    for i, data in enumerate(images):
+        while len(blob) % 4: blob.append(0)
+        views.append({'buffer': 0, 'byteOffset': len(blob), 'byteLength': len(data)}); blob += data
+        js['images'][i]['bufferView'] = len(views) - 1; js['images'][i].pop('uri', None)
     while len(blob) % 4: blob.append(0)
     js['bufferViews'] = views; js['accessors'] = accs
     js['buffers'] = [{'byteLength': len(blob)}]
@@ -573,15 +608,31 @@ def main():
         if 'inverseBindMatrices' in s:
             arr, t = acc_read(js, bin_, s['inverseBindMatrices'])
             s['inverseBindMatrices'] = push(arr, t)
-    # textures of the template are not needed: the photo replaces them
+    # the photo replaces the colour textures; the knit/fleece relief (normal map) of the template stays
+    keep = set()
     for mt in js['materials']:
         pb = mt.get('pbrMetallicRoughness', {})
         for k in ('baseColorTexture', 'metallicRoughnessTexture'): pb.pop(k, None)
-        for k in ('normalTexture', 'occlusionTexture', 'emissiveTexture'): mt.pop(k, None)
+        for k in ('occlusionTexture', 'emissiveTexture'): mt.pop(k, None)
+        if 'normalTexture' in mt: keep.add(mt['normalTexture']['index'])
         mt.pop('extensions', None)
-    for k in ('textures', 'images', 'samplers'): js.pop(k, None)
+    imgs = []
+    if keep and 'textures' in js:
+        tex = js['textures']; old_img = js.get('images', [])
+        new_tex, new_img, remap = [], [], {}
+        for ti in sorted(keep):
+            t = dict(tex[ti]); src = old_img[t['source']]
+            bv = js['bufferViews'][src['bufferView']]
+            imgs.append(bytes(bin_[bv.get('byteOffset', 0): bv.get('byteOffset', 0) + bv['byteLength']]))
+            new_img.append({k: v for k, v in src.items() if k != 'bufferView'}); t['source'] = len(new_img) - 1
+            remap[ti] = len(new_tex); new_tex.append(t)
+        for mt in js['materials']:
+            if 'normalTexture' in mt: mt['normalTexture']['index'] = remap[mt['normalTexture']['index']]
+        js['textures'] = new_tex; js['images'] = new_img
+    else:
+        for k in ('textures', 'images', 'samplers'): js.pop(k, None)
     js.pop('extensionsUsed', None); js.pop('extensionsRequired', None)
-    write_glb(os.path.join(OUT, f'{gid}.glb'), js, new_arrays)
+    write_glb(os.path.join(OUT, f'{gid}.glb'), js, new_arrays, imgs)
 
     # product entry
     import time; ver = int(time.time())

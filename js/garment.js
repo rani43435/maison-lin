@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794146158';
+import { FABRICS, MODELS } from './catalog.js?v=1794148031';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -57,17 +57,17 @@ function fabricMaterial(item, orig) {
   const M = MODELS[item.model];
   const color = new THREE.Color(item.hex);
   const sheen = color.clone().lerp(new THREE.Color('#fff4e6'), 0.5);
-  if (M.photo) color.set('#d6d2ce'); // photos already carry their light: keep the 3D lights from washing them out
+  if (M.photo) color.set('#c4bdb9'); // photos already carry their light: keep the 3D lights from washing them out
   const m = new THREE.MeshPhysicalMaterial({
     color, roughness: f.rough, metalness: 0,
     sheen: f.sheen * 0.8, sheenRoughness: 0.6, sheenColor: sheen,
     side: THREE.DoubleSide,
   });
-  if (orig && orig.normalMap) { m.normalMap = orig.normalMap; m.normalScale = new THREE.Vector2(0.6, 0.6); }
+  if (orig && orig.normalMap) { const ns = M.photo ? 0.3 : 0.6; m.normalMap = orig.normalMap; m.normalScale = new THREE.Vector2(ns, ns); }
   else if (M.extra) { const e = FABRICS[M.extra]; m.normalMap = loadTex(e.map, M.extraRepeat); m.normalScale = new THREE.Vector2(M.extraScale, M.extraScale); }
   let detailMean = 0;
   if (M.detail && orig && orig.map) { m.map = orig.map; detailMean = meanLum(orig.map); }
-  if (M.photo) { m.map = loadTex(M.photo, 1, true); m.sheen *= 0.5; }
+  if (M.photo) { m.map = loadTex(M.photo, 1, true); m.sheen *= 0.2; }
   // fabric weave + soft drape folds layered on top of the model's own normals
   const dt = FABRICS[M.detailTex] || FABRICS.jersey;
   const detailTex = loadTex(dt.map, 1), foldTex = loadTex('assets/tex/folds_n.jpg', 1);
