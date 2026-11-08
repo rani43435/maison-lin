@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794060210';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794060210';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794102939';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794102939';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -37,6 +37,12 @@ export class TryOn {
     this.filters = new Map();
     this.lightCanvas = document.createElement('canvas'); this.lightCanvas.width = 24; this.lightCanvas.height = 14;
     this.lastLight = 0;
+    this.pmrem = pm;
+    // segmentation: hair, face and hands are copied from the camera on top of the garment (true occlusion)
+    this.front = $('#toFront'); this.fctx = this.front.getContext('2d');
+    this.maskCanvas = document.createElement('canvas'); this.maskCtx = this.maskCanvas.getContext('2d', { willReadFrequently: true });
+    this.envCanvas = document.createElement('canvas'); this.envCanvas.width = 96; this.envCanvas.height = 48;
+    this.lastEnv = 0; this.segFrame = 0; this.fitX = 1;
     this.camera = new THREE.OrthographicCamera(-1, 1, 0.5, -0.5, -20, 20);
     this.holder = new THREE.Group(); this.scene.add(this.holder);
     this.garment = null; this.current = null;
@@ -46,6 +52,7 @@ export class TryOn {
       const a = e.target.closest('[data-act]');
       if (a && a.dataset.act === 'closeTryOn') this.close();
       if (a && a.dataset.act === 'flipCam') this.flip();
+      if (a && a.dataset.act === 'snap') this.snapReq = true;
       if (a && a.dataset.act === 'addBagTry' && this.current) this.onAdd(this.current, this.getSize());
       const sb = e.target.closest('[data-tsize]'); if (sb) { this.setSize(sb.dataset.tsize); this.renderSizes(); }
     });
@@ -98,6 +105,14 @@ export class TryOn {
       });
       try { this.pose = await PoseLandmarker.createFromOptions(fs, opts('GPU')); }
       catch { this.pose = await PoseLandmarker.createFromOptions(fs, opts('CPU')); }
+      // multiclass segmentation (background, hair, body skin, face skin, clothes, other) — optional
+      try {
+        const { ImageSegmenter } = await import('../lib/mediapipe/vision_bundle.mjs');
+        const so = (delegate) => ({ baseOptions: { modelAssetPath: new URL(MP + 'selfie_multiclass_256x256.tflite', location.href).href, delegate },
+          runningMode: 'VIDEO', outputCategoryMask: true, outputConfidenceMasks: false });
+        try { this.seg = await ImageSegmenter.createFromOptions(fs, so('GPU')); } catch { this.seg = await ImageSegmenter.createFromOptions(fs, so('CPU')); }
+      } catch (e) { console.warn('segmentation unavailable', e); this.seg = null; }
+      console.info('fitting room: segmentation', this.seg ? 'on' : 'off');
     }
     this.status('Step back until your shoulders and hips are in view');
     this.lastTs = -1;
@@ -129,7 +144,7 @@ export class TryOn {
     try {
       const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
       this.cams = cams;
-      document.querySelector('.flip').style.display = cams.length > 1 ? '' : 'none';
+      document.querySelector('.cam-flip').style.display = cams.length > 1 ? '' : 'none';
     } catch {}
     return true;
   }
@@ -151,7 +166,8 @@ export class TryOn {
     $('#tryon').classList.remove('open');
     cancelAnimationFrame(this.raf);
     if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
-    this.stream = null; this.smooth = null;
+    this.stream = null; this.smooth = null; this.segOK = false; this.fitX = 1;
+    this.fctx.clearRect(0, 0, this.front.width, this.front.height);
     document.dispatchEvent(new Event('tryon-closed'));
   }
 
@@ -163,6 +179,7 @@ export class TryOn {
     if (h < H) { h = H; w = H * a; }
     this.frame.style.width = `${w}px`; this.frame.style.height = `${h}px`;
     this.renderer.setSize(w, h, false);
+    this.front.width = Math.min(960, vw); this.front.height = Math.round(this.front.width / a);
     this.aspect = a;
     Object.assign(this.camera, { left: -a / 2, right: a / 2, top: 0.5, bottom: -0.5 });
     this.camera.updateProjectionMatrix();
@@ -178,9 +195,98 @@ export class TryOn {
       this.lastVT = v.currentTime;
       let res;
       try { res = this.pose.detectForVideo(v, ts); } catch { return; }
+      this.lm = res.landmarks && res.landmarks[0];
+      if (this.seg && (this.segFrame++ % 2 === 0)) {
+        try { this.seg.segmentForVideo(v, ts + 0.1, (r) => this.onSeg(r)); } catch (e) { console.warn(e); this.seg = null; }
+      }
       this.apply(res);
+      this.roomEnv();
     }
     this.renderer.render(this.scene, this.camera);
+    this.drawFront();
+    if (this.snapReq) { this.snapReq = false; this.snap(); }
+  }
+
+  // segmentation result: build an alpha mask of what must stay in front of the garment
+  onSeg(r) {
+    const m = r.categoryMask; if (!m) return;
+    const W = m.width, H = m.height, cls = m.getAsUint8Array();
+    if (this.maskCanvas.width !== W) { this.maskCanvas.width = W; this.maskCanvas.height = H; this.maskImg = this.maskCtx.createImageData(W, H); this.cls = new Uint8Array(W * H); }
+    this.cls.set(cls);
+    const d = this.maskImg.data, lm = this.lm;
+    // hands: body skin near the hand landmarks
+    const hands = [];
+    if (lm) for (const [w, a, b, c] of [[15, 17, 19, 21], [16, 18, 20, 22]]) {
+      if (lm[w].visibility < 0.3) continue;
+      const cx = (lm[w].x + lm[a].x + lm[b].x + lm[c].x) / 4, cy = (lm[w].y + lm[a].y + lm[b].y + lm[c].y) / 4;
+      const rr = Math.max(0.035, Math.hypot(lm[b].x - lm[w].x, (lm[b].y - lm[w].y) / this.aspect) * 1.5);
+      hands.push([cx * W, cy * H, rr * W]);
+    }
+    for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
+      const c = cls[i];
+      let on = c === 1 || c === 3; // hair, face
+      if (!on && c === 2) for (const [hx, hy, hr] of hands) { const dx = x - hx, dy = (y - hy) / this.aspect; if (dx * dx + dy * dy < hr * hr) { on = true; break; } }
+      d[i * 4 + 3] = on ? 255 : 0;
+    }
+    this.maskCtx.putImageData(this.maskImg, 0, 0);
+    this.segOK = true; this.segT = performance.now();
+  }
+
+  // camera pixels of hair, face and hands drawn over the garment
+  drawFront() {
+    const c = this.fctx, W = this.front.width, H = this.front.height;
+    c.globalCompositeOperation = 'source-over'; c.filter = 'none';
+    c.clearRect(0, 0, W, H);
+    if (!this.segOK || !this.garment || !this.garment.root.visible || performance.now() - this.segT > 600) return;
+    c.drawImage(this.video, 0, 0, W, H);
+    c.globalCompositeOperation = 'destination-in';
+    c.filter = 'blur(1.5px)';
+    c.drawImage(this.maskCanvas, 0, 0, W, H);
+    c.filter = 'none'; c.globalCompositeOperation = 'source-over';
+  }
+
+  // body width from the segmentation: the garment is widened so the clothes underneath never peek out
+  bodyHalfWidth(yN, cxN, capN) {
+    if (!this.segOK || !this.cls) return 0;
+    const W = this.maskCanvas.width, H = this.maskCanvas.height, row = Math.round(yN * H);
+    if (row < 0 || row >= H) return 0;
+    const isBody = (x) => { const c = this.cls[row * W + x]; return c === 2 || c === 4 || c === 5; };
+    const cx = Math.round(cxN * W); if (cx < 0 || cx >= W || !isBody(cx)) return 0;
+    const side = (dir) => { let x = cx, gap = 0; while (x > 0 && x < W - 1 && gap < 3 && Math.abs(x - cx) < capN * W) { x += dir; gap = isBody(x) ? 0 : gap + 1; } return Math.abs(x - cx) - gap; };
+    return Math.min(side(-1), side(1)) / W; // the narrower side: arms resting on the body do not count
+  }
+
+  // the room itself as the environment: fabric picks up the colours around you
+  roomEnv() {
+    const now = performance.now(); if (now - this.lastEnv < 1200) return; this.lastEnv = now;
+    const c = this.envCanvas, x = c.getContext('2d');
+    try { x.filter = 'blur(6px)'; x.drawImage(this.video, 0, 0, c.width, c.height); x.filter = 'none'; } catch { return; }
+    const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
+    const rt = this.pmrem.fromEquirectangular(t);
+    t.dispose();
+    if (this.envRT) this.envRT.dispose();
+    this.envRT = rt; this.scene.environment = rt.texture;
+  }
+
+  // photo of the look: camera + garment + hair/face/hands layer, shared or downloaded
+  async snap() {
+    const vw = this.video.videoWidth, vh = this.video.videoHeight; if (!vw) return;
+    const c = document.createElement('canvas'); c.width = vw; c.height = vh;
+    const x = c.getContext('2d');
+    const mirror = !this.frame.classList.contains('rear');
+    if (mirror) { x.translate(vw, 0); x.scale(-1, 1); }
+    x.drawImage(this.video, 0, 0, vw, vh);
+    x.save(); x.filter = 'drop-shadow(0 7px 12px rgba(20,12,8,.32))'; x.drawImage(this.canvas, 0, 0, vw, vh); x.restore();
+    x.drawImage(this.front, 0, 0, vw, vh);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.fillStyle = 'rgba(245,239,230,.92)'; x.font = `italic ${Math.round(vh * 0.04)}px 'Cormorant Garamond', Georgia, serif`;
+    x.fillText(`Maison Lin — ${this.current ? this.current.name : ''}`, vh * 0.04, vh - vh * 0.045);
+    const fl = $('#toFlash'); fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92));
+    const file = new File([blob], 'maison-lin-look.jpg', { type: 'image/jpeg' });
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'My Maison Lin look' }); return; } } catch {}
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'maison-lin-look.jpg'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
   // One-Euro filter: steady when still, responsive when moving
@@ -311,10 +417,19 @@ export class TryOn {
     const s = this.smooth || (this.smooth = { q: q.clone(), k, pos: iS.clone(), arms: null });
     s.q.slerp(q, 0.7); s.k += (k - s.k) * 0.5; s.pos.lerp(iS, 0.85);
 
+    // widen to the real body (segmentation), never narrower than the garment's own cut
+    const gHalf = torsoHalf(g);
+    if (this.segOK && gHalf) {
+      const yS = (flm[LS].y + flm[RS].y) / 2, yH = (flm[LH].y + flm[RH].y) / 2, cxN = (flm[LS].x + flm[RS].x + flm[LH].x + flm[RH].x) / 4;
+      const cap = Math.abs(flm[LS].x - flm[RS].x) * 0.95;
+      const hw = Math.max(this.bodyHalfWidth(yS + (yH - yS) * 0.35, cxN, cap), this.bodyHalfWidth(yS + (yH - yS) * 0.8, cxN, cap)) * this.aspect;
+      const want = hw > 0 ? THREE.MathUtils.clamp((hw * 1.06) / (gHalf * s.k), 1, 1.28) : 1;
+      this.fitX += (want - this.fitX) * 0.15;
+    } else this.fitX += (1 - this.fitX) * 0.1;
     const root = g.root;
     root.visible = true;
     root.quaternion.copy(s.q);
-    root.scale.setScalar(s.k);
+    root.scale.set(s.k * this.fitX, s.k, s.k * (1 + (this.fitX - 1) * 0.5));
     const anchor = new THREE.Vector3(0, g.model.shoulderY + 0.035, 0).multiplyScalar(s.k).applyQuaternion(s.q);
     root.position.copy(s.pos).sub(anchor);
     root.position.z = -anchor.z;
@@ -382,7 +497,7 @@ export class TryOn {
     const neckTop = ears.clone(); neckTop.z -= 0.02 * m;
     this.capsule('neck', neckBase, neckTop, 0.05 * m);
     // chin and beard come in front of the collar
-    if (vis(NOSE) && vis(9) && vis(10)) {
+    if (!this.segOK && vis(NOSE) && vis(9) && vis(10)) {
       const nose = B3(NOSE), mouth = B3(9).add(B3(10)).multiplyScalar(0.5);
       const chin = mouth.clone().addScaledVector(mouth.clone().sub(nose), 1.15);
       nose.z -= 0.03 * m; chin.z -= 0.015 * m;
@@ -396,8 +511,29 @@ export class TryOn {
       this.caps['ua' + sd].visible = false;
       if (vis(E) && vis(Wr) && front(Wr)) this.capsule('fa' + sd, B3(E), B3(Wr), 0.034 * m); else this.caps['fa' + sd].visible = false;
       // hands always come out of the cuff, so they are drawn over the sleeve end
-      if (vis(Wr) && vis(H)) { const a = B3(Wr), b = B3(H); a.z += 0.05 * m; b.z += 0.05 * m; this.capsule('h' + sd, a.lerp(b, 0.15), b, 0.045 * m); } else this.caps['h' + sd].visible = false;
+      if (!this.segOK && vis(Wr) && vis(H)) { const a = B3(Wr), b = B3(H); a.z += 0.05 * m; b.z += 0.05 * m; this.capsule('h' + sd, a.lerp(b, 0.15), b, 0.045 * m); } else this.caps['h' + sd].visible = false;
     };
     sideCap('L', LS, LE, LW, 19); sideCap('R', RS, RE, RW, 20);
   }
+}
+
+// half-width of the garment's torso (metres, rest pose) at chest height, sleeves excluded
+const halfCache = {};
+function torsoHalf(g) {
+  const key = g.item.model;
+  if (halfCache[key] !== undefined) return halfCache[key];
+  let best = 0;
+  const yC = g.model.shoulderY - 0.18;
+  for (const m of g.meshes) {
+    const P = m.geometry.attributes.position, SI = m.geometry.attributes.skinIndex, SW = m.geometry.attributes.skinWeight;
+    const bones = m.skeleton ? m.skeleton.bones : null;
+    for (let i = 0; i < P.count; i++) {
+      const y = P.getY(i); if (Math.abs(y - yC) > 0.05) continue;
+      let arm = 0;
+      if (SI && bones) for (let k = 0; k < 4; k++) { const b = bones[SI.getComponent(i, k)]; if (b && /arm/i.test(b.name)) arm += SW.getComponent(i, k); }
+      if (arm > 0.25) continue;
+      best = Math.max(best, Math.abs(P.getX(i)));
+    }
+  }
+  return (halfCache[key] = best || g.model.shoulderW);
 }

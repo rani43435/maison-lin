@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794060210';
+import { FABRICS, MODELS } from './catalog.js?v=1794102939';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -12,14 +12,24 @@ export function setProgressHandler(f) { onProgress = f; }
 
 export function loadModel(name) {
   if (!gltfCache[name]) {
-    gltfCache[name] = new Promise((res, rej) => loader.load(`assets/${name}.glb`, res, undefined, rej));
+    const url = (MODELS[name] && MODELS[name].glb) || `assets/${name}.glb`;
+    gltfCache[name] = new Promise((res, rej) => loader.load(url, res, undefined, rej));
   }
   return gltfCache[name];
 }
-function loadTex(url, repeat) {
-  const key = url + repeat;
+const pending = [];
+/** resolves when every texture requested so far has loaded */
+export function texturesReady() { return Promise.all(pending); }
+function loadTex(url, repeat, photo = false) {
+  const key = url + repeat + photo;
   if (!texCache[key]) {
-    const t = texLoader.load(url);
+    let done; pending.push(new Promise((r) => (done = r)));
+    const t = texLoader.load(url, done, undefined, done);
+    if (photo) {
+      // photo atlas (front | back) on the second uv set, glTF orientation
+      t.flipY = false; t.channel = 1; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+      texCache[key] = t; return t;
+    }
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(repeat, repeat);
     t.anisotropy = 8;
@@ -47,6 +57,7 @@ function fabricMaterial(item, orig) {
   const M = MODELS[item.model];
   const color = new THREE.Color(item.hex);
   const sheen = color.clone().lerp(new THREE.Color('#fff4e6'), 0.5);
+  if (M.photo) color.set('#ffffff');
   const m = new THREE.MeshPhysicalMaterial({
     color, roughness: f.rough, metalness: 0,
     sheen: f.sheen * 0.8, sheenRoughness: 0.6, sheenColor: sheen,
@@ -56,6 +67,7 @@ function fabricMaterial(item, orig) {
   else if (M.extra) { const e = FABRICS[M.extra]; m.normalMap = loadTex(e.map, M.extraRepeat); m.normalScale = new THREE.Vector2(M.extraScale, M.extraScale); }
   let detailMean = 0;
   if (M.detail && orig && orig.map) { m.map = orig.map; detailMean = meanLum(orig.map); }
+  if (M.photo) { m.map = loadTex(M.photo, 1, true); m.sheen *= 0.5; }
   // fabric weave + soft drape folds layered on top of the model's own normals
   const dt = FABRICS[M.detailTex] || FABRICS.jersey;
   const detailTex = loadTex(dt.map, 1), foldTex = loadTex('assets/tex/folds_n.jpg', 1);

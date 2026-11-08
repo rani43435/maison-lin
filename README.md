@@ -7,3 +7,21 @@ A demo luxury boutique: browse a 3D clothing rail, turn each piece 360°, add it
 - `lib/` — vendored three.js and MediaPipe Tasks Vision
 
 Run locally: `python3 -m http.server` and open http://localhost:8000 (camera needs localhost or https).
+
+## Add a garment from two photos
+
+The site can turn a front and a back photo into a rigged 3D piece (rail, 360° view and AR all work with it):
+
+```
+python3 tools/add_garment.py front.jpg back.jpg --type hoodie --name "Le Hoodie Gris" --color "Gris" --price 240
+```
+
+or without a computer: upload a folder to `inbox/` on GitHub (see `inbox/README.md`) — a GitHub Action builds it.
+The photos are cut out (rembg), de-lit, measured and projected onto the matching template (`hoodie`, `hoodie-pocket`, `knit`, `polo`);
+results go to `assets/custom/` and appear in the shop, on the rail and in the fitting room.
+
+## Fitting room (AR)
+
+MediaPipe Pose drives the rigged garment; the multiclass selfie segmenter copies hair, face and hands from the camera
+on top of the garment and measures the body so the piece is widened to cover the clothes underneath; the room itself
+lights the fabric. The camera button saves or shares a photo of the look.

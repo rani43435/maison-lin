@@ -66,10 +66,41 @@ const C = [
   ['hoodie-pocket', 'Camel', '#B08A5E', '#B08A5E'],
 ];
 
+const CATEGORY = { knit: 'knitwear', polo: 'polos', hoodie: 'hoodies', 'hoodie-pocket': 'hoodies', tee: 'tees', linen: 'shirts' };
+const BADGES = { 'knit-avoine': 'Bestseller', 'hoodie-pocket-chocolat': 'New', 'polo-crme': 'Limited' };
+
 export const ITEMS = C.map(([model, color, hex, button], i) => ({
   id: `${model}-${color.toLowerCase().replace(/[^a-z]/g, '')}`,
   model, color, hex, button: model === 'linen' ? '#D9C6A6' : (model === 'polo' ? '#F2ECE2' : button), index: i, ...D[model],
+  category: CATEGORY[model], added: i,
 }));
+ITEMS.forEach((it) => { it.badge = BADGES[it.id] || ''; });
+
+/** pieces added from photos with tools/add_garment.py (assets/custom/products.json) */
+export async function loadCatalog() {
+  let extra = [];
+  try {
+    const r = await fetch(`assets/custom/products.json?v=${Date.now() >> 16}`);
+    if (r.ok) extra = await r.json();
+  } catch {}
+  for (const p of extra) {
+    if (ITEMS.some((i) => i.id === p.id)) continue;
+    if (!MODELS[p.base]) continue;
+    MODELS[p.id] = { ...MODELS[p.base], glb: p.glb, photo: p.texture, detail: false, extra: null };
+    ITEMS.push({
+      id: p.id, model: p.id, base: p.base, color: p.color, hex: p.hex, button: p.hex, name: p.name, price: p.price,
+      fabric: p.fabric || 'fleece', line: p.line || 'Atelier', desc: p.desc || '', details: p.details || [],
+      category: CATEGORY[p.base] || 'hoodies', photo: p.texture, badge: 'Atelier', added: 100 + ITEMS.length, index: ITEMS.length,
+    });
+  }
+  ITEMS.forEach((it, i) => { it.index = i; });
+  return ITEMS;
+}
+
+export const CATEGORIES = [['all', 'All pieces'], ['knitwear', 'Knitwear'], ['hoodies', 'Hoodies'], ['polos', 'Polos']];
+// size guide (cm, garment measured flat)
+export const SIZE_GUIDE = { head: ['Size', 'Chest', 'Length', 'Sleeve', 'EU'], rows: [
+  ['XS', '108', '68', '60', '44'], ['S', '114', '70', '61', '46'], ['M', '120', '72', '62', '48'], ['L', '126', '74', '63', '50'], ['XL', '132', '76', '64', '52'] ] };
 
 export const SIZES = ['XS', 'S', 'M', 'L', 'XL'];
 // how each size scales the garment around the body (try-on)

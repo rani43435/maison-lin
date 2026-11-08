@@ -1,0 +1,30 @@
+[
+ {
+  "id": "le-hoodie-delave-anthracite",
+  "base": "hoodie",
+  "name": "Le Hoodie Délavé",
+  "color": "Anthracite",
+  "hex": "#6D6C6B",
+  "price": 240,
+  "fabric": "fleece",
+  "line": "Molleton — Atelier",
+  "desc": "A soft, heavy brushed-back fleece hoodie with a deep hood and dropped shoulders.",
+  "details": [
+   [
+    "Fabric",
+    "100% cotton fleece"
+   ],
+   [
+    "Fit",
+    "Relaxed"
+   ],
+   [
+    "Care",
+    "Wash cold, inside out"
+   ]
+  ],
+  "glb": "assets/custom/le-hoodie-delave-anthracite.glb",
+  "texture": "assets/custom/le-hoodie-delave-anthracite.jpg",
+  "category": "hoodie"
+ }
+]

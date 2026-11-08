@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE } from './catalog.js?v=1794060210';
-import { makeGarment, loadModel } from './garment.js?v=1794060210';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794102939';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794102939';
+import { initShop } from './shop.js?v=1794102939';
+await loadCatalog();
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -123,6 +125,7 @@ async function buildRail(progress) {
 }
 
 // ---------- state ----------
+const thumbs = {}; // id -> {f, b} studio shots for the store
 let offset = 0, target = 0, vel = 0;
 const minOff = 0, maxOff = (N - 1) * SPACING;
 let mode = 'home';
@@ -222,6 +225,13 @@ function onClick() {
 
 // ---------- product ----------
 let size = 'M';
+// deterministic demo stock: a few sizes run low
+function stockOf(item, sz) { let h = 7; for (const c of item.id + sz) h = (h * 31 + c.charCodeAt(0)) % 997; return h % 9 === 0 ? 0 : h % 5 === 0 ? 1 + (h % 3) : 9; }
+function deliveryDate() {
+  const d = new Date(); let n = 0;
+  while (n < 3) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) n++; }
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
 function fillProduct(item) {
   $('#pLine').textContent = item.line;
   $('#pName').textContent = item.name;
@@ -230,8 +240,22 @@ function fillProduct(item) {
   $('#pPrice').textContent = `€${item.price}`;
   $('#pDesc').textContent = item.desc;
   $('#pDetails').innerHTML = item.details.map(([a, b]) => `<li><span>${a}</span><b>${b}</b></li>`).join('');
-  $('#pSizes').innerHTML = SIZES.map((s) => `<button class="${s === size ? 'on' : ''}" data-size="${s}">${s}</button>`).join('');
+  $('#pSizes').innerHTML = SIZES.map((s) => `<button class="${s === size ? 'on' : ''}${stockOf(item, s) ? '' : ' out'}" data-size="${s}">${s}</button>`).join('');
+  const st = stockOf(item, size);
+  $('#pStock').textContent = st === 0 ? `${size} is sold out — we can notify you` : st < 4 ? `Only ${st} left in ${size}` : '';
+  $('.product [data-act="addBag"]').disabled = st === 0;
+  $('#pDelivery').textContent = `Delivered by ${deliveryDate()}`;
+  const fam = item.base || item.model;
+  $('#pVariants').innerHTML = ITEMS.filter((o) => (o.base || o.model) === fam).map((o) => `<button title="${o.color}" data-variant="${o.index}" class="${o === item ? 'on' : ''}" style="background:${o.hex}"></button>`).join('');
+  $('#pHeart').classList.toggle('on', shop && shop.isWished(item.id));
+  const rel = ITEMS.filter((o) => (o.base || o.model) !== fam).sort((a, b) => ((a.index * 7 + item.index) % 5) - ((b.index * 7 + item.index) % 5)).slice(0, 3);
+  $('#pRelated').innerHTML = rel.map((o) => `<button data-open="${o.index}"><div class="ri">${thumbs[o.id] ? `<img src="${thumbs[o.id].f}" alt="">` : ''}</div><span>${o.name}</span><small>€${o.price}</small></button>`).join('');
 }
+$('#pVariants').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-variant]'); if (!b) return;
+  const i = +b.dataset.variant; if (i === selected) return;
+  closeProduct(); setTimeout(() => openProduct(i), 120);
+});
 $('#pSizes').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   size = b.dataset.size; fillProduct(slots[selected].item);
@@ -257,28 +281,52 @@ function closeProduct() {
 // ---------- bag ----------
 let bag = [];
 try { bag = JSON.parse(localStorage.getItem('ml_bag') || '[]'); } catch { bag = []; }
-function saveBag() { try { localStorage.setItem('ml_bag', JSON.stringify(bag)); } catch {} renderBag(); }
+bag = bag.filter((b) => ITEMS.some((i) => i.id === b.id)).map((b) => ({ qty: 1, ...b }));
+let promo = '';
+try { promo = localStorage.getItem('ml_promo') || ''; } catch {}
+const FREE_SHIP = 300;
+function saveBag() { try { localStorage.setItem('ml_bag', JSON.stringify(bag)); localStorage.setItem('ml_promo', promo); } catch {} renderBag(); }
 function renderBag() {
-  $('#bagCount').textContent = bag.length;
+  const n = bag.reduce((a, b) => a + b.qty, 0);
+  const c = $('#bagCount'); c.textContent = n; c.classList.toggle('on', n > 0);
   const el = $('#bagItems');
   if (!bag.length) { el.innerHTML = '<p class="bag-empty">Your bag is empty.</p>'; }
   else el.innerHTML = bag.map((b, k) => {
     const it = ITEMS.find((i) => i.id === b.id);
-    return `<div class="bag-item"><div class="sw" style="background:linear-gradient(160deg,${it.hex},${shade(it.hex)})"></div>
-      <div><div class="n">${it.name}</div><div class="m">${it.color} · ${b.size}</div></div>
-      <div class="r">€${it.price}<button class="rm" data-rm="${k}">Remove</button></div></div>`;
+    const t = thumbs[it.id];
+    return `<div class="bag-item"><div class="sw" style="${t ? '' : `background:linear-gradient(160deg,${it.hex},${shade(it.hex)})`}">${t ? `<img src="${t.f}" alt="">` : ''}</div>
+      <div><div class="n">${it.name}</div><div class="m">${it.color} · ${b.size}</div><div class="qty"><button data-q="${k}" data-d="-1">−</button><span>${b.qty}</span><button data-q="${k}" data-d="1">+</button></div></div>
+      <div class="r">€${it.price * b.qty}<button class="rm" data-rm="${k}">Remove</button></div></div>`;
   }).join('');
-  const tot = bag.reduce((a, b) => a + ITEMS.find((i) => i.id === b.id).price, 0);
-  $('#bagTotal').textContent = `€${tot}`;
+  const sub = bag.reduce((a, b) => a + ITEMS.find((i) => i.id === b.id).price * b.qty, 0);
+  const disc = promo === 'WELCOME10' ? Math.round(sub * 0.1) : 0;
+  const ship = !sub ? 0 : sub - disc >= FREE_SHIP ? 0 : 12;
+  $('#bagSub').textContent = `€${sub}`;
+  $('#discRow').hidden = !disc; $('#bagDisc').textContent = `−€${disc}`;
+  $('#bagShip').textContent = !sub ? '—' : ship ? `€${ship}` : 'Complimentary';
+  $('#bagTotal').textContent = `€${sub - disc + ship}`;
+  const left = Math.max(0, FREE_SHIP - (sub - disc));
+  $('#shipText').textContent = !sub ? `Complimentary delivery on orders over €${FREE_SHIP}` : left ? `You are €${left} away from complimentary delivery` : 'Your order ships complimentary';
+  $('#shipBar').style.width = `${Math.min(100, ((sub - disc) / FREE_SHIP) * 100)}%`;
+  $('#promoIn').value = promo;
 }
 function shade(hex) { const c = new THREE.Color(hex); c.multiplyScalar(0.72); return '#' + c.getHexString(); }
 $('#bagItems').addEventListener('click', (e) => {
+  const q = e.target.closest('[data-q]');
+  if (q) { const b = bag[+q.dataset.q]; b.qty = Math.max(0, b.qty + +q.dataset.d); if (!b.qty) bag.splice(+q.dataset.q, 1); saveBag(); return; }
   const b = e.target.closest('[data-rm]'); if (!b) return;
   bag.splice(+b.dataset.rm, 1); saveBag();
 });
+$('#promo').addEventListener('submit', (e) => {
+  e.preventDefault(); const v = $('#promoIn').value.trim().toUpperCase();
+  if (v === 'WELCOME10') { promo = v; toast('Code applied — 10% off'); } else { promo = ''; toast(v ? 'This code is not valid' : 'Code removed'); }
+  saveBag();
+});
 function addToBag(item, sz = size) {
-  bag.push({ id: item.id, size: sz }); saveBag();
-  toast(`${item.name} — ${item.color} added`);
+  const ex = bag.find((b) => b.id === item.id && b.size === sz);
+  if (ex) ex.qty++; else bag.push({ id: item.id, size: sz, qty: 1 });
+  saveBag();
+  toast(`${item.name} — ${item.color}, ${sz} added`);
 }
 function openBag() { $('#bag').classList.add('open'); $('#scrim').classList.add('on'); }
 function closeBag() { $('#bag').classList.remove('open'); $('#scrim').classList.remove('on'); }
@@ -290,7 +338,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794060210');
+  const mod = await import('./tryon.js?v=1794102939');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
@@ -299,6 +347,7 @@ document.addEventListener('tryon-closed', () => { running = true; tick(); });
 
 function closeAll() {
   closeBag();
+  if (shop.isOpen()) { shop.closeShop(); return; }
   if (tryon && tryon.isOpen) { tryon.close(); return; }
   closeProduct();
 }
@@ -313,11 +362,62 @@ document.addEventListener('click', (e) => {
   if (act === 'closeBag' || act === 'closeAll') closeBag();
   if (act === 'closeProduct') closeProduct();
   if (act === 'home' || act === 'collection') { closeBag(); closeProduct(); if (act === 'home') target = 0; }
+  if (act === 'credits' && a.tagName === 'A') { shop.closeShop(); }
   if (act === 'addBag' && selected != null) addToBag(slots[selected].item);
+  if (act === 'toggleWish' && selected != null) { shop.toggleWish(slots[selected].item.id); }
+  if (act === 'atelier') { closeBag(); if (mode === 'product') closeProduct(); }
   if (act === 'tryOn' && selected != null) openTryOn(slots[selected].item);
   if (act === 'details') openProduct(Math.max(0, pbIdx));
   if (act === 'tryOnCur') openTryOn(slots[Math.max(0, pbIdx)].item);
 });
+
+// ---------- store ----------
+let paused = false;
+const shop = initShop({
+  items: ITEMS, thumbs,
+  openOnRail: (i) => { if (mode === 'product') closeProduct(); target = i * SPACING; setTimeout(() => openProduct(i), mode === 'home' ? 450 : 50); },
+  tryOn: (it) => openTryOn(it),
+  toast, getSize: () => size,
+  onShop: (open) => { paused = open; if (open) { closeBag(); if (mode === 'product') closeProduct(); } },
+  onWish: () => { if (selected != null) $('#pHeart').classList.toggle('on', shop.isWished(slots[selected].item.id)); },
+});
+
+/** studio shots of every piece (front + back) for the shop grid, rendered by the same engine */
+async function renderThumbs() {
+  await texturesReady();
+  const W = 480, H = 600;
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  r.setSize(W, H); r.setPixelRatio(1);
+  r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+  const sc = new THREE.Scene();
+  sc.environment = new THREE.PMREMGenerator(r).fromScene(new RoomEnvironment(), 0.04).texture; sc.environmentIntensity = 0.6;
+  const k = new THREE.DirectionalLight('#fff1df', 2.2); k.position.set(1.8, 3, 4); sc.add(k);
+  const f2 = new THREE.DirectionalLight('#e7d6c4', 0.8); f2.position.set(-3, 1.5, 2); sc.add(f2);
+  const bk = new THREE.DirectionalLight('#e7d6c4', 0.8); bk.position.set(0, 2, -4); sc.add(bk);
+  sc.add(new THREE.HemisphereLight('#fff7ee', '#b9a38c', 0.45));
+  const cam = new THREE.PerspectiveCamera(22, W / H, 0.1, 20);
+  for (const it of ITEMS) {
+    const g = await makeGarment(it);
+    // relaxed, hanging sleeves like on the rail
+    const d = restArmDirs(g); g.root.updateMatrixWorld(true);
+    for (const sd of ['l', 'r']) if (d[sd]) g.rig.aim('upperarm' + sd, d[sd], 'forearm' + sd);
+    sc.add(g.root); g.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(g.root, true);
+    const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+    const dist = Math.max(sz.y / 2 / Math.tan(THREE.MathUtils.degToRad(11)), sz.x / 2 / Math.tan(THREE.MathUtils.degToRad(11)) / (W / H)) * 1.12;
+    const out = {};
+    for (const [side, sgn] of [['f', 1], ['b', -1]]) {
+      cam.position.set(c.x + sgn * dist * 0.08, c.y + 0.05, c.z + sgn * dist); cam.lookAt(c);
+      r.render(sc, cam);
+      out[side] = await new Promise((res) => r.domElement.toBlob((b) => res(URL.createObjectURL(b)), 'image/webp', 0.86));
+    }
+    thumbs[it.id] = out;
+    sc.remove(g.root);
+  }
+  r.dispose(); r.forceContextLoss();
+  shop.refreshThumbs(); renderBag();
+  if (selected != null) fillProduct(slots[selected].item);
+}
 
 // ---------- phone bar ----------
 let pbIdx = -1;
@@ -449,6 +549,7 @@ let running = true;
 function tick() {
   if (!running) return;
   requestAnimationFrame(tick);
+  if (paused) { clock.getDelta(); return; }
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
@@ -534,5 +635,6 @@ function tick() {
   bar.style.width = '100%';
   tick();
   setTimeout(() => $('#loader').classList.add('done'), 400);
-  window.__ml = { scene, camera, slots, openProduct, closeProduct };
+  window.__ml = { scene, camera, slots, openProduct, closeProduct, shop, thumbs };
+  setTimeout(() => renderThumbs().catch((e) => console.warn('thumbs', e)), 900);
 })();

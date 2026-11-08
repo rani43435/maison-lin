@@ -4,4 +4,4 @@ V=$(date +%s)
 cd "$(dirname "$0")/.."
 sed -i -E "s#(js/app\.js)(\?v=[0-9]+)?#\1?v=$V#" index.html
 sed -i -E "s#(style\.css)(\?v=[0-9]+)?#\1?v=$V#" index.html
-sed -i -E "s#'\./(catalog|garment|tryon)\.js(\?v=[0-9]+)?'#'./\1.js?v=$V'#g" js/*.js
+sed -i -E "s#'\./(catalog|garment|tryon|shop)\.js(\?v=[0-9]+)?'#'./\1.js?v=$V'#g" js/*.js

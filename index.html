@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1794060210">
+<link rel="stylesheet" href="style.css?v=1794102939">
 <script type="importmap">
 { "imports": { "three": "./lib/three/three.module.min.js", "three/addons/": "./lib/three/addons/" } }
 </script>
@@ -26,16 +26,32 @@
   <div class="loader-sub">Atelier — Est. 2026</div>
 </div>
 
+<div class="announce" id="announce"><div class="announce-track"><span>Complimentary delivery over €300</span><span>Free returns within 30 days</span><span>Try every piece on with your camera</span><span>Gift wrapping on request</span><span>Complimentary delivery over €300</span><span>Free returns within 30 days</span><span>Try every piece on with your camera</span><span>Gift wrapping on request</span></div></div>
 <header class="nav">
-  <a class="nav-link" href="#" data-act="collection">Collection</a>
+  <div class="nav-left">
+    <button class="icon-btn menu-btn" data-act="menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 7h18M3 12h18M3 17h12"/></svg></button>
+    <nav class="menu-links">
+      <a class="nav-link" href="#" data-act="atelier">Atelier</a>
+      <a class="nav-link" href="#" data-shop="new">New in</a>
+      <a class="nav-link" href="#" data-shop="all">Shop</a>
+      <a class="nav-link" href="#" data-shop="knitwear">Knitwear</a>
+      <a class="nav-link" href="#" data-shop="hoodies">Hoodies</a>
+      <a class="nav-link" href="#" data-shop="polos">Polos</a>
+    </nav>
+  </div>
   <a class="logo" href="#" data-act="home">Maison <em>Lin</em></a>
-  <button class="nav-link bag-btn" data-act="bag">Bag <span id="bagCount">0</span></button>
+  <div class="nav-right">
+    <button class="icon-btn" data-act="search" aria-label="Search"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg></button>
+    <button class="icon-btn" data-act="wish" aria-label="Wishlist"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/></svg><span class="count" id="wishCount">0</span></button>
+    <button class="icon-btn bag-btn" data-act="bag" aria-label="Bag"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg><span class="count" id="bagCount">0</span></button>
+  </div>
 </header>
 
 <section id="intro" class="intro">
   <p class="eyebrow">Autumn — Winter 2026</p>
   <h1>Quiet pieces,<br><em>made to be worn.</em></h1>
   <p class="intro-sub">Drag or scroll along the rail. Choose a piece, turn it in your hands, then try it on with your camera.</p>
+  <div class="intro-cta"><button class="btn primary" data-shop="all">Shop all pieces</button><button class="btn ghost" data-shop="new">New in</button></div>
 </section>
 
 <div id="label" class="hover-label"><span class="hl-name"></span><span class="hl-price"></span></div>
@@ -52,46 +68,113 @@
 
 <aside id="product" class="product">
   <button class="close" data-act="closeProduct" aria-label="Close">×</button>
-  <p class="eyebrow" id="pLine"></p>
+  <div class="p-head"><p class="eyebrow" id="pLine"></p><button class="heart" id="pHeart" data-act="toggleWish" aria-label="Add to wishlist"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/></svg></button></div>
   <h2 id="pName"></h2>
-  <p class="p-color"><span class="swatch" id="pSwatch"></span><span id="pColor"></span></p>
   <p class="p-price" id="pPrice"></p>
-  <p class="p-desc" id="pDesc"></p>
-  <ul class="p-details" id="pDetails"></ul>
+  <div class="p-colors"><p class="p-color"><span class="swatch" id="pSwatch"></span><span id="pColor"></span></p><div class="p-variants" id="pVariants"></div></div>
+  <div class="p-sizehead"><span>Select size</span><button class="link" data-act="sizeGuide">Size guide</button></div>
   <div class="sizes" id="pSizes"></div>
+  <p class="p-stock" id="pStock"></p>
   <div class="p-actions">
     <button class="btn primary" data-act="addBag">Add to bag</button>
     <button class="btn ghost" data-act="tryOn"><span class="dot"></span>Try it on — AR</button>
   </div>
+  <ul class="p-perks"><li id="pDelivery"></li><li>Free returns within 30 days</li><li>Complimentary gift wrapping</li></ul>
+  <div class="acc open"><button class="acc-h" data-act="acc">Description</button><div class="acc-b"><p class="p-desc" id="pDesc"></p></div></div>
+  <div class="acc"><button class="acc-h" data-act="acc">Details &amp; care</button><div class="acc-b"><ul class="p-details" id="pDetails"></ul></div></div>
+  <div class="acc"><button class="acc-h" data-act="acc">Delivery &amp; returns</button><div class="acc-b"><p class="p-desc">Standard delivery in 2–4 working days, complimentary over €300. Express next-day delivery €15. Returns are free within 30 days in the original packaging.</p></div></div>
+  <div class="p-related"><p class="eyebrow">Complete the look</p><div class="rel-row" id="pRelated"></div></div>
   <p class="p-note">Drag the piece to turn it 360°</p>
 </aside>
 
-<aside id="bag" class="bag">
+<aside id="bag" class="bag drawer">
   <div class="bag-head"><h3>Your bag</h3><button class="close" data-act="closeBag" aria-label="Close">×</button></div>
+  <div class="ship"><p id="shipText"></p><div class="ship-bar"><span id="shipBar"></span></div></div>
   <div id="bagItems" class="bag-items"></div>
   <div class="bag-foot">
-    <div class="bag-total"><span>Subtotal</span><span id="bagTotal">€0</span></div>
+    <form class="promo" id="promo"><input id="promoIn" placeholder="Promo code" autocomplete="off"><button class="link" type="submit">Apply</button></form>
+    <div class="bag-row"><span>Subtotal</span><span id="bagSub">€0</span></div>
+    <div class="bag-row" id="discRow" hidden><span>Discount</span><span id="bagDisc"></span></div>
+    <div class="bag-row"><span>Delivery</span><span id="bagShip">—</span></div>
+    <div class="bag-total"><span>Total</span><span id="bagTotal">€0</span></div>
     <button class="btn primary" disabled>Checkout</button>
-    <p class="p-note">Demo boutique — payment is not enabled.</p>
+    <p class="p-note">Demo boutique — payment is not enabled. Try code <b>WELCOME10</b>.</p>
   </div>
 </aside>
+<aside id="wish" class="bag drawer">
+  <div class="bag-head"><h3>Wishlist</h3><button class="close" data-act="closeWish" aria-label="Close">×</button></div>
+  <div id="wishItems" class="bag-items"></div>
+</aside>
+<aside id="menu" class="menu-drawer">
+  <div class="bag-head"><span class="logo">Maison <em>Lin</em></span><button class="close" data-act="closeMenu" aria-label="Close">×</button></div>
+  <nav class="menu-list">
+    <a href="#" data-act="atelier">Atelier <small>3D rail</small></a>
+    <a href="#" data-shop="new">New in</a>
+    <a href="#" data-shop="all">Shop all</a>
+    <a href="#" data-shop="knitwear">Knitwear</a>
+    <a href="#" data-shop="hoodies">Hoodies</a>
+    <a href="#" data-shop="polos">Polos</a>
+    <a href="#" data-act="wish">Wishlist</a>
+    <a href="#" data-act="sizeGuide">Size guide</a>
+  </nav>
+  <p class="p-note">Client services — Mon to Sat, 10–19h</p>
+</aside>
+<section id="shop" class="shop">
+  <div class="shop-inner">
+    <div class="shop-head">
+      <p class="eyebrow" id="shopEyebrow">Autumn — Winter 2026</p>
+      <h1 id="shopTitle">All pieces</h1>
+      <div class="shop-bar">
+        <div class="chips" id="shopChips"></div>
+        <div class="shop-tools">
+          <div class="colors" id="shopColors"></div>
+          <label class="sort">Sort <select id="shopSort"><option value="feat">Featured</option><option value="new">Newest</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></label>
+        </div>
+      </div>
+      <p class="shop-count" id="shopCount"></p>
+    </div>
+    <div class="grid" id="shopGrid"></div>
+    <div class="services">
+      <div><b>Complimentary delivery</b><span>On every order over €300</span></div>
+      <div><b>Virtual fitting room</b><span>Try each piece on with your camera</span></div>
+      <div><b>Free returns</b><span>Within 30 days</span></div>
+      <div><b>Gift wrapping</b><span>Linen pouch and a handwritten card</span></div>
+    </div>
+    <footer class="footer">
+      <div class="f-news"><p class="logo">Maison <em>Lin</em></p><p>News from the atelier, once a month.</p><form id="news"><input type="email" placeholder="Your email" required><button class="btn primary">Subscribe</button></form></div>
+      <div><b>Client services</b><a href="#" data-act="sizeGuide">Size guide</a><a href="#">Delivery</a><a href="#">Returns</a><a href="#">Contact</a></div>
+      <div><b>The Maison</b><a href="#" data-act="atelier">Atelier</a><a href="#">Our fabrics</a><a href="#">Sustainability</a><a href="#" data-act="credits">3D credits</a></div>
+      <div><b>Legal</b><a href="#">Imprint</a><a href="#">Privacy</a><a href="#">Terms</a></div>
+      <p class="f-copy">© 2026 Maison Lin — demo boutique, no real orders.</p>
+    </footer>
+  </div>
+</section>
+<section id="search" class="search">
+  <div class="search-top"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input id="searchIn" placeholder="Search Maison Lin" autocomplete="off"><button class="close" data-act="closeSearch" aria-label="Close">×</button></div>
+  <div class="search-sugg" id="searchSugg"><span>Popular</span><button data-q="hoodie">Hoodie</button><button data-q="knit">Knitwear</button><button data-q="polo">Polo</button><button data-q="crème">Crème</button></div>
+  <div class="grid small" id="searchGrid"></div>
+</section>
+<div id="sizeModal" class="modal"><div class="modal-card"><button class="close" data-act="closeSize" aria-label="Close">×</button><p class="eyebrow">Size guide</p><h3>Find your size</h3><p class="p-desc">Measurements of the garment laid flat, in centimetres. Our pieces are cut relaxed — take your usual size, or one down for a closer fit.</p><table id="sizeTable"></table></div></div>
 <div id="scrim" class="scrim" data-act="closeAll"></div>
 
 <section id="tryon" class="tryon">
   <div class="to-frame" id="toFrame">
     <video id="toVideo" playsinline muted></video>
     <canvas id="toCanvas"></canvas>
+    <canvas id="toFront"></canvas>
     <div class="to-grain"></div>
   </div>
   <div class="to-top">
     <div class="logo small">Maison <em>Lin</em> <span class="to-tag">Fitting room</span></div>
     <div class="to-actions">
-      <button class="flip" data-act="flipCam" aria-label="Switch camera"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><path d="M9.5 13.5a2.6 2.6 0 0 0 4.6 1.4M14.5 12.3a2.6 2.6 0 0 0-4.6-1.4"/><path d="M14.6 15.4l-.5-.5.6-.6M9.4 10.6l.5.5-.6.6"/></svg></button>
+      <button class="flip" data-act="snap" aria-label="Take a photo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3.2"/></svg></button>
+      <button class="flip cam-flip" data-act="flipCam" aria-label="Switch camera"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><path d="M9.5 13.5a2.6 2.6 0 0 0 4.6 1.4M14.5 12.3a2.6 2.6 0 0 0-4.6-1.4"/><path d="M14.6 15.4l-.5-.5.6-.6M9.4 10.6l.5.5-.6.6"/></svg></button>
       <button class="close light" data-act="closeTryOn" aria-label="Close">×</button>
     </div>
   </div>
   <div class="to-status" id="toStatus">Preparing the fitting room…</div>
   <div class="to-badge" id="toBadge">Back view</div>
+  <div class="to-flash" id="toFlash"></div>
   <div class="to-bottom">
     <div class="to-info"><span id="toName"></span><span id="toPrice"></span></div>
     <div class="to-sizes" id="toSizes"></div>
@@ -104,6 +187,6 @@
 <div id="credits" class="credits"><button class="close" data-act="closeCredits" aria-label="Close">×</button><p class="eyebrow">Garment models — CC BY 4.0</p><ul id="creditList"></ul><p class="p-note">Recoloured, refitted and rigged for Maison Lin.</p></div>
 <div id="toast" class="toast"></div>
 
-<script type="module" src="js/app.js?v=1794060210"></script>
+<script type="module" src="js/app.js?v=1794102939"></script>
 </body>
 </html>
