@@ -121,6 +121,16 @@ def measure(m):
         if rr: hw.append((rr[1] - rr[0]) / 2); cx_r = (rr[0] + rr[1]) / 2
     # sleeves hanging close to the body join the torso run: take the narrowest row
     half = float(min(hw)) if hw else (xs.max() - xs.min()) / 4
+    # sleeves touching the body: the torso ends where the lowest point of a column jumps away from the hem
+    H, W = m.shape
+    bottom = np.where(m.any(0), H - 1 - np.argmax(m[::-1], 0), -1)
+    tol = 0.035 * (hem - top)
+    def edge(dir):
+        x = int(round(cx))
+        while 0 < x < W - 1 and bottom[x + dir] >= 0 and abs(bottom[x + dir] - hem) < tol: x += dir
+        return abs(x - cx)
+    col = min(edge(-1), edge(1))
+    if col > 0.15 * (hem - top): half = min(half, col)
     return dict(cx=cx, top=top, hem=hem, half=half)
 
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794104400';
+import { FABRICS, MODELS } from './catalog.js?v=1794138980';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -57,7 +57,7 @@ function fabricMaterial(item, orig) {
   const M = MODELS[item.model];
   const color = new THREE.Color(item.hex);
   const sheen = color.clone().lerp(new THREE.Color('#fff4e6'), 0.5);
-  if (M.photo) color.set('#ffffff');
+  if (M.photo) color.set('#d6d2ce'); // photos already carry their light: keep the 3D lights from washing them out
   const m = new THREE.MeshPhysicalMaterial({
     color, roughness: f.rough, metalness: 0,
     sheen: f.sheen * 0.8, sheenRoughness: 0.6, sheenColor: sheen,
