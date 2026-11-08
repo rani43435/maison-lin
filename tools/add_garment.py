@@ -134,6 +134,31 @@ def measure(m):
     return dict(cx=cx, top=top, hem=hem, half=half)
 
 
+def sleeve_boxes(m, meas):
+    """bounding boxes (x0, y0, x1, y1) of the parts of the mask left and right of the torso"""
+    H, W = m.shape
+    xs = np.arange(W)[None, :]
+    out = {}
+    for side, sel in (('l', xs < meas['cx'] - meas['half'] * 1.04), ('r', xs > meas['cx'] + meas['half'] * 1.04)):
+        mm = m & sel
+        mm[: int(meas['top'] + 0.05 * (meas['hem'] - meas['top']))] = False
+        ys, xx = np.nonzero(mm)
+        if len(xx) < 200: out[side] = None; continue
+        out[side] = sleeve_frame(np.stack([xx, ys], 1).astype(np.float64), (meas['cx'], meas['top']), -1 if side == 'l' else 1)
+    return out
+
+
+def sleeve_frame(P, shoulder, outward):
+    """principal axis of a sleeve (pixels): mean, along-axis unit (shoulder -> cuff), across unit (away from body), extents"""
+    if len(P) > 20000: P = P[np.random.default_rng(0).choice(len(P), 20000, replace=False)]
+    mu = P.mean(0); C = np.cov((P - mu).T); w, V = np.linalg.eigh(C)
+    e1 = V[:, 1]; e2 = np.array([-e1[1], e1[0]])
+    if np.dot(np.array(shoulder) - mu, e1) > 0: e1 = -e1
+    if e2[0] * outward < 0: e2 = -e2
+    a = (P - mu) @ e1; b = (P - mu) @ e2
+    return dict(mu=mu, e1=e1, e2=e2, a0=np.percentile(a, 1), a1=np.percentile(a, 99.5), b0=np.percentile(b, 2), b1=np.percentile(b, 98))
+
+
 # ---------------------------------------------------------------- glb ----
 CT = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
 NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}
@@ -230,6 +255,7 @@ def main():
         if not a.keep_light: rgb = delight(rgb, m)
         rgb = fill_background(rgb, m)
         sides[side] = dict(rgb=rgb, m=m, meas=measure(m))
+        sides[side]['sleeves'] = sleeve_boxes(m, sides[side]['meas'])
         print(f'  {side}: {m.shape[1]}x{m.shape[0]}  garment {m.mean() * 100:.0f}%  {sides[side]["meas"]}')
 
     # atlas: each photo letterboxed into a HALF x HALF square (garment colour around it)
@@ -259,14 +285,50 @@ def main():
     tm, to_px = template_silhouette(fabric_prims)
     T = measure(tm)
     print('  template:', T)
+    # arm weight per vertex (upper arm + forearm joints)
+    skin_of_mesh = {n['mesh']: n['skin'] for n in js['nodes'] if 'mesh' in n and 'skin' in n}
+    def arm_weight(mi, p):
+        if mi not in skin_of_mesh or 'JOINTS_0' not in p['attributes']: return None
+        names = [js['nodes'][j].get('name', '') for j in js['skins'][skin_of_mesh[mi]]['joints']]
+        isarm = np.array(['arm' in nm for nm in names])
+        J, _ = acc_read(js, bin_, p['attributes']['JOINTS_0']); Wt, wt = acc_read(js, bin_, p['attributes']['WEIGHTS_0'])
+        Wt = Wt.astype(np.float64)
+        if wt.get('normalized') and wt['componentType'] != 5126: Wt /= np.iinfo(CT[wt['componentType']]).max
+        return (Wt * isarm[J.astype(int)]).sum(1)
+    # template sleeve boxes (front view, pixels) from the arm-weighted vertices
+    tsl = {'l': [], 'r': []}
+    for fp in fabric_prims:
+        w = arm_weight(fp['mi'], js['meshes'][fp['mi']]['primitives'][fp['pi']])
+        if w is None: continue
+        P = fp['pos'][w > 0.6]
+        tx, ty = to_px(P[:, 0], P[:, 1])
+        for k, sel in (('l', tx < T['cx']), ('r', tx >= T['cx'])):
+            if sel.any(): tsl[k].append(np.stack([tx[sel], ty[sel]], 1))
+    TS = {k: sleeve_frame(np.concatenate(v), (T['cx'], T['top']), -1 if k == 'l' else 1) if v else None for k, v in tsl.items()}
+    ang = lambda f: f and round(float(np.degrees(np.arctan2(f['e1'][1], f['e1'][0]))))
+    print('  sleeve axis (deg): template', {k: ang(v) for k, v in TS.items()}, 'photo', {sd: {k: ang(v) for k, v in sides[sd]['sleeves'].items()} for sd in sides})
 
-    def uv_for(side, X, Y):
-        """template metres -> atlas uv for one side (back is seen mirrored)"""
+    def uv_for(side, X, Y, arm=None):
+        """template metres -> atlas uv for one side (back is seen mirrored); sleeves map onto the photo's sleeves"""
         S = sides[side]['meas']; sc, ox, oy = place[side]
         xs = -X if side == 'back' else X
         tx, ty = to_px(xs, Y)
         px_ = S['cx'] + (tx - T['cx']) * (S['half'] / T['half'])
         py_ = S['top'] + (ty - T['top']) * ((S['hem'] - S['top']) / (T['hem'] - T['top']))
+        if arm is not None:
+            for k in ('l', 'r'):
+                tb, pb = TS.get(k), sides[side]['sleeves'].get(k)
+                if tb is None or pb is None: continue
+                sel = (tx < T['cx']) if k == 'l' else (tx >= T['cx'])
+                # along / across the sleeve axis, template sleeve -> photo sleeve
+                d = np.stack([tx, ty], 1) - tb['mu']
+                t = ((d @ tb['e1']) - tb['a0']) / (tb['a1'] - tb['a0'])
+                q = ((d @ tb['e2']) - tb['b0']) / (tb['b1'] - tb['b0'])
+                pa = pb['a0'] + t * (pb['a1'] - pb['a0']); pq = pb['b0'] + q * (pb['b1'] - pb['b0'])
+                pt = pb['mu'] + pa[:, None] * pb['e1'] + pq[:, None] * pb['e2']
+                sx, sy = pt[:, 0], pt[:, 1]
+                w = np.clip((arm - 0.35) / 0.4, 0, 1); w = w * w * (3 - 2 * w); w = np.where(sel, w, 0)
+                px_ = px_ * (1 - w) + sx * w; py_ = py_ * (1 - w) + sy * w
         u = (px_ * sc + ox) / (HALF * 2); v = (py_ * sc + oy) / HALF
         return np.stack([u, v], 1)
 
@@ -300,7 +362,14 @@ def main():
                     arr, t = attrs[k]
                     attrs[k] = (np.concatenate([arr, arr[dup]]), t)
                 P2 = attrs['POSITION'][0].astype(np.float64)
-                uv = np.where(is_back[:, None], uv_for('back', P2[:, 0], P2[:, 1]), uv_for('front', P2[:, 0], P2[:, 1])).astype(np.float32)
+                arm = None
+                if 'JOINTS_0' in attrs and mi in skin_of_mesh:
+                    names = [js['nodes'][j].get('name', '') for j in js['skins'][skin_of_mesh[mi]]['joints']]
+                    isarm = np.array(['arm' in nm for nm in names])
+                    J = attrs['JOINTS_0'][0].astype(int); Wt = attrs['WEIGHTS_0'][0].astype(np.float64); wt = attrs['WEIGHTS_0'][1]
+                    if wt.get('normalized') and wt['componentType'] != 5126: Wt /= np.iinfo(CT[wt['componentType']]).max
+                    arm = (Wt * isarm[J]).sum(1)
+                uv = np.where(is_back[:, None], uv_for('back', P2[:, 0], P2[:, 1], arm), uv_for('front', P2[:, 0], P2[:, 1], arm)).astype(np.float32)
                 uv_t = dict(attrs['TEXCOORD_0'][1]) if 'TEXCOORD_0' in attrs else {'componentType': 5126, 'type': 'VEC2'}
                 for k in [k for k in attrs if k.startswith('TEXCOORD_') and k != 'TEXCOORD_0']: del attrs[k]
                 attrs['TEXCOORD_1'] = (uv, uv_t)
