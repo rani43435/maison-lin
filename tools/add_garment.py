@@ -25,7 +25,7 @@ from scipy import ndimage
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, 'assets')
 OUT = os.path.join(ASSETS, 'custom')
-HALF = 1024  # atlas: front in the left square, back in the right square
+HALF = 2048  # atlas: front in the left square, back in the right square
 
 DEFAULTS = {
     'hoodie':        dict(fabric='fleece', line='Molleton', desc='A soft, heavy brushed-back fleece hoodie with a deep hood and dropped shoulders.',
@@ -222,7 +222,12 @@ def read_glb(path):
     return js, bin_
 
 
+OVERRIDE = {}  # accessor index -> replacement array (warped positions)
+
+
 def acc_read(js, bin_, i):
+    if i in OVERRIDE:
+        return OVERRIDE[i].copy(), js['accessors'][i]
     a = js['accessors'][i]; bv = js['bufferViews'][a['bufferView']]
     dt = np.dtype(CT[a['componentType']]); n = NC[a['type']]
     start = bv.get('byteOffset', 0) + a.get('byteOffset', 0)
@@ -279,6 +284,130 @@ def template_silhouette(prims, px=1024):
     return m, to_px
 
 
+# ---------------------------------------------------------------- template fitting ----
+def _q2m(q):
+    x, y, z, w = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+def _local(n):
+    M = np.eye(4)
+    if 'matrix' in n: return np.array(n['matrix'], float).reshape(4, 4).T
+    S = np.diag(n.get('scale', [1, 1, 1]) + [1])
+    R = np.eye(4); R[:3, :3] = _q2m(n.get('rotation', [0, 0, 0, 1]))
+    T = np.eye(4); T[:3, 3] = n.get('translation', [0, 0, 0])
+    return T @ R @ S
+
+
+def _worlds(js):
+    parent = {}
+    for i, n in enumerate(js['nodes']):
+        for c in n.get('children', []): parent[c] = i
+    cache = {}
+    def W(i):
+        if i not in cache: cache[i] = (W(parent[i]) if i in parent else np.eye(4)) @ _local(js['nodes'][i])
+        return cache[i]
+    return [W(i) for i in range(len(js['nodes']))], parent
+
+
+def warp_template(js, bin_, sides, strength=1.0):
+    """reshape the rigged template to the garment in the photos: torso width, sleeve length and width.
+    Bones move with it (new bind pose), so the rail, the 360° view and AR keep working."""
+    names = {n.get('name'): i for i, n in enumerate(js['nodes'])}
+    Wn, parent = _worlds(js)
+    pos = lambda nm: Wn[names[nm]][:3, 3].copy()
+    # collect fabric vertices + arm weights
+    skin_of_mesh = {n['mesh']: n['skin'] for n in js['nodes'] if 'mesh' in n and 'skin' in n}
+    prims = []
+    for mi, mesh in enumerate(js['meshes']):
+        for p in mesh['primitives']:
+            mat = js['materials'][p['material']]['name'] if 'material' in p else ''
+            P, _ = acc_read(js, bin_, p['attributes']['POSITION'])
+            arm = np.zeros(len(P)); side = np.sign(P[:, 0])
+            if mi in skin_of_mesh and 'JOINTS_0' in p['attributes']:
+                jn = [js['nodes'][j].get('name', '') for j in js['skins'][skin_of_mesh[mi]]['joints']]
+                isarm = np.array(['arm' in x for x in jn])
+                J, _ = acc_read(js, bin_, p['attributes']['JOINTS_0']); Wt, wt = acc_read(js, bin_, p['attributes']['WEIGHTS_0'])
+                Wt = Wt.astype(np.float64)
+                if wt.get('normalized') and wt['componentType'] != 5126: Wt /= np.iinfo(CT[wt['componentType']]).max
+                arm = (Wt * isarm[J.astype(int)]).sum(1)
+            prims.append(dict(acc=p['attributes']['POSITION'], P=P.astype(np.float64), arm=arm, occ=mat.startswith('Occluder')))
+    fab = [q for q in prims if not q['occ']]
+    Pall = np.concatenate([q['P'] for q in fab]); Aall = np.concatenate([q['arm'] for q in fab])
+    torsoP = Pall[Aall < 0.3]
+    # template torso: collar top, hem, half-width at the chest/waist band
+    y_top, y_hem = torsoP[:, 1].max(), torsoP[:, 1].min()
+    Ht = y_top - y_hem
+    band = torsoP[(torsoP[:, 1] > y_hem + 0.25 * Ht) & (torsoP[:, 1] < y_hem + 0.45 * Ht)]
+    half_t = np.percentile(np.abs(band[:, 0]), 97)
+    # photo torso proportions (front)
+    F = sides['front']; M = F['meas']
+    kp = Ht / (M['hem'] - M['top'])                      # photo pixel -> template metres
+    half_p = M['half'] * kp
+    sx = float(np.clip(1 + (half_p / half_t - 1) * strength, 0.78, 1.45))
+    # sleeves: length and width from the photo's sleeve axis
+    info = {}
+    S0 = {s: pos(f'upperarm.{s}') for s in 'LR'}; E0 = {s: pos(f'forearm.{s}') for s in 'LR'}
+    fr = [f for f in F['sleeves'].values() if f]
+    for s, sg in (('L', 1), ('R', -1)):
+        S, E = S0[s], E0[s]; u = (E - S) / np.linalg.norm(E - S)
+        msk = (Aall > 0.6) & (np.sign(Pall[:, 0]) == sg)
+        rel = Pall[msk] - S; along = rel @ u; perp = rel - along[:, None] * u
+        Lt = np.percentile(along, 99.5); Wt_ = 2 * np.percentile(np.linalg.norm(perp, axis=1), 85)
+        if fr:
+            Lp = np.mean([f['a1'] - f['a0'] for f in fr]) * kp; Wp = np.mean([f['b1'] - f['b0'] for f in fr]) * kp
+            # photo sleeves hang straight and start lower (drop shoulder), so trust them only halfway
+            ls = float(np.clip(1 + (Lp / Lt - 1) * strength * 0.5, 0.9, 1.15)); ws = float(np.clip(1 + (Wp / Wt_ - 1) * strength * 0.5, 0.92, 1.3))
+        else:
+            ls = ws = 1.0
+        Snew = S.copy(); Snew[0] *= sx
+        info[s] = dict(S=S, Snew=Snew, u=u, ls=ls, ws=ws, Lt=Lt)
+    print(f'  fit: torso width ×{sx:.2f}, sleeves length ×{info["L"]["ls"]:.2f}, width ×{info["L"]["ws"]:.2f}')
+
+    def warp(P, arm):
+        Q = P.copy()
+        # torso: wider/narrower, a little deeper with it
+        Q[:, 0] *= sx; Q[:, 2] *= 1 + (sx - 1) * 0.4
+        for s, sg in (('L', 1), ('R', -1)):
+            d = info[s]; m = (np.sign(P[:, 0]) == sg) & (arm > 0)
+            if not m.any(): continue
+            rel = P[m] - d['S']; along = rel @ d['u']; perp = rel - along[:, None] * d['u']
+            # length grows from the shoulder; width only on the sleeve itself
+            t = np.clip(along / max(d['Lt'], 1e-6), 0, 1)
+            Sq = d['Snew'] + d['u'] * np.where(along > 0, along * d['ls'], along)[:, None] + perp * (1 + (d['ws'] - 1) * np.clip(t * 3, 0, 1))[:, None]
+            w = arm[m][:, None]
+            Q[m] = Q[m] * (1 - w) + Sq * w
+        return Q
+
+    for q in prims:
+        OVERRIDE[q['acc']] = warp(q['P'], q['arm'] if not q['occ'] else np.zeros(len(q['P']))).astype(np.float32)
+    # bones: move shoulder/arm joints, keep their rotations; new inverse bind matrices
+    newW = {}
+    for i, n in enumerate(js['nodes']):
+        nm = n.get('name', '')
+        Wi = Wn[i].copy()
+        if nm.startswith('shoulder.'): Wi[0, 3] *= sx
+        if nm.startswith('upperarm.'): Wi[:3, 3] = info[nm[-1]]['Snew']
+        if nm.startswith('forearm.'):
+            d = info[nm[-1]]; Wi[:3, 3] = d['Snew'] + (Wn[i][:3, 3] - d['S']) * d['ls']
+        newW[i] = Wi
+    for i, n in enumerate(js['nodes']):
+        if i not in parent or not n.get('name', '').split('.')[0] in ('shoulder', 'upperarm', 'forearm'): continue
+        loc = np.linalg.inv(newW[parent[i]]) @ newW[i]
+        n['translation'] = [float(x) for x in loc[:3, 3]]
+        n.pop('matrix', None)
+    for sk in js.get('skins', []):
+        if 'inverseBindMatrices' not in sk: continue
+        ibm = np.stack([np.linalg.inv(newW[j]).T.reshape(16) for j in sk['joints']]).astype(np.float32)
+        OVERRIDE[sk['inverseBindMatrices']] = ibm
+    L = info['L']
+    E1 = L['Snew'] + (E0['L'] - L['S']) * L['ls']
+    return dict(shoulderY=round(float(L['Snew'][1]), 3), shoulderW=round(float(2 * L['Snew'][0]), 3),
+                upper=round(float(np.linalg.norm(E1 - L['Snew'])), 3), fore=round(float(L['Lt'] * L['ls'] - np.linalg.norm(E1 - L['Snew'])), 3))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('front'); ap.add_argument('back')
@@ -287,7 +416,12 @@ def main():
     ap.add_argument('--price', type=int, default=200)
     ap.add_argument('--desc', default=None); ap.add_argument('--id', default=None)
     ap.add_argument('--keep-light', action='store_true', help='keep the photo shading as it is')
+    ap.add_argument('--out', default=None, help='output folder (default assets/custom)')
+    ap.add_argument('--no-catalog', action='store_true', help='do not touch products.json (used by the Supabase builder)')
+    ap.add_argument('--fit', type=float, default=1.0, help='how far the template is reshaped to the photo (0 = keep the template)')
     a = ap.parse_args()
+    global OUT
+    if a.out: OUT = a.out; os.makedirs(OUT, exist_ok=True)
 
     os.makedirs(OUT, exist_ok=True)
     plain = unicodedata.normalize('NFKD', f'{a.name}-{a.color}').encode('ascii', 'ignore').decode()
@@ -318,11 +452,12 @@ def main():
         atlas.paste(sq, (k * HALF, 0))
         place[side] = (sc, ox + k * HALF, oy)
     atlas = atlas.filter(ImageFilter.UnsharpMask(radius=1.2, percent=40, threshold=2))
-    atlas.save(os.path.join(OUT, f'{gid}.jpg'), quality=88)
+    atlas.save(os.path.join(OUT, f'{gid}.jpg'), quality=92)
     fabric_tile(sides['front']['rgb'], sides['front']['m'], sides['front']['meas']).save(os.path.join(OUT, f'{gid}_fabric.jpg'), quality=88)
 
     # template
     js, bin_ = read_glb(os.path.join(ASSETS, f'{a.type}.glb'))
+    model_info = warp_template(js, bin_, sides, strength=a.fit)
     fabric_prims = []
     for mi, mesh in enumerate(js['meshes']):
         for pi, p in enumerate(mesh['primitives']):
@@ -452,13 +587,16 @@ def main():
     import time; ver = int(time.time())
     fm = sides['front']['m']; col = np.median(sides['front']['rgb'][fm], 0)
     hexc = '#%02X%02X%02X' % tuple(int(c) for c in col)
+    json.dump(dict(id=gid, model=model_info, hex=hexc), open(os.path.join(OUT, f'{gid}.json'), 'w'))
+    if a.no_catalog:
+        print(f'✓ {gid}  {model_info}'); return
     d = DEFAULTS[a.type]
     pj = os.path.join(OUT, 'products.json')
     items = json.load(open(pj)) if os.path.exists(pj) else []
     items = [i for i in items if i['id'] != gid]
     items.append(dict(id=gid, base=a.type, name=a.name, color=a.color or 'Custom', hex=hexc, price=a.price,
                       fabric=d['fabric'], line=f"{d['line']} — Atelier", desc=a.desc or d['desc'], details=d['details'],
-                      glb=f'assets/custom/{gid}.glb?v={ver}', texture=f'assets/custom/{gid}.jpg?v={ver}', fabricTex=f'assets/custom/{gid}_fabric.jpg?v={ver}', category=a.type.split('-')[0]))
+                      glb=f'assets/custom/{gid}.glb?v={ver}', texture=f'assets/custom/{gid}.jpg?v={ver}', fabricTex=f'assets/custom/{gid}_fabric.jpg?v={ver}', model=model_info, category=a.type.split('-')[0]))
     json.dump(items, open(pj, 'w'), indent=1, ensure_ascii=False)
     print(f'✓ added {gid}: {a.name} — {a.color} €{a.price}  colour {hexc}')
     print(f'  {len(items)} custom piece(s) in assets/custom/products.json')

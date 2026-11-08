@@ -1,5 +1,5 @@
 // Talks to Supabase (products, settings, checkout). Without config the store runs in demo mode.
-import { CONFIG } from './config.js?v=1794143783';
+import { CONFIG } from './config.js?v=1794146158';
 
 export const live = () => !!(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 const H = () => ({ apikey: CONFIG.supabaseAnonKey, Authorization: `Bearer ${CONFIG.supabaseAnonKey}` });

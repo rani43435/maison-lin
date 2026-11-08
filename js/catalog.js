@@ -81,7 +81,7 @@ export const SETTINGS = { store: { freeShipping: 300, shippingFee: 12 }, promo: 
 
 /** the catalogue: built-in pieces + pieces made from photos (Supabase when connected, else assets/custom/products.json) */
 export async function loadCatalog() {
-  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794143783');
+  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794146158');
   let extra = [];
   if (live()) {
     const [rows, st] = await Promise.all([fetchProducts(), fetchSettings()]);
@@ -89,7 +89,7 @@ export async function loadCatalog() {
     extra = (rows || []).filter((r) => r.glb_url).map((r) => ({
       id: r.id, base: r.base || 'knit', name: r.name, color: r.color, hex: r.hex, price: r.price, fabric: undefined,
       line: r.line, desc: r.description, details: r.details || [], glb: r.glb_url, texture: r.texture_url, fabricTex: r.fabric_url,
-      model: r.model || {}, ai: true, category: r.category, badge: r.badge, stock: r.stock || {}, sort: r.sort,
+      model: r.model || {}, ai: !!(r.model && r.model.ai), category: r.category, badge: r.badge, stock: r.stock || {}, sort: r.sort,
     }));
     // built-in demo pieces: hide or re-price them from /admin (settings.builtins)
     const B = SETTINGS.builtins || {};

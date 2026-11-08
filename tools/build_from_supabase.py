@@ -33,7 +33,7 @@ def main(pid):
             if not u: raise RuntimeError(f'missing {k} photo')
             fn = os.path.join(tmp, f'{k}.jpg'); urllib.request.urlretrieve(u, fn); files[k] = fn
         out = os.path.join(tmp, 'out')
-        cmd = [sys.executable, os.path.join(os.path.dirname(__file__), 'ai_garment.py'), files['front'], files['back'],
+        cmd = [sys.executable, os.path.join(os.path.dirname(__file__), 'add_garment.py'), files['front'], files['back'],
                '--name', p['name'], '--color', p.get('color') or '', '--price', str(p['price']),
                '--type', p.get('base') or 'knit', '--id', pid, '--out', out, '--no-catalog']
         subprocess.run(cmd, check=True)
