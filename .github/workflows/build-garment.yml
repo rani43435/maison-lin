@@ -1,0 +1,19 @@
+name: Build 3D garment (from /admin)
+on:
+  repository_dispatch:
+    types: [build-garment]
+  workflow_dispatch:
+    inputs:
+      id: { description: 'product id', required: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - run: pip install numpy pillow scipy scikit-image rembg onnxruntime opencv-python-headless bpy
+      - run: python3 tools/build_from_supabase.py "${{ github.event.client_payload.id || inputs.id }}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

@@ -34,3 +34,11 @@ results go to `assets/custom/` and appear in the shop, on the rail and in the fi
 MediaPipe Pose drives the rigged garment; the multiclass selfie segmenter copies hair, face and hands from the camera
 on top of the garment and measures the body so the piece is widened to cover the clothes underneath; the room itself
 lights the fabric. The camera button saves or shares a photo of the look.
+
+## Real store mode (Supabase + Stripe)
+
+`js/config.js` empty → demo boutique. Filled → products, settings and orders come from Supabase and checkout goes
+through Stripe. Owner panel: `/admin.html` (add pieces from two photos, edit/hide products, orders, texts, colours,
+delivery, discount codes). Backend: `supabase/schema.sql`, edge functions in `supabase/functions/`
+(`checkout`, `stripe-webhook`, `build-garment`), 3D build action `.github/workflows/build-garment.yml`.
+Step-by-step setup (Arabic): `SETUP.md`.

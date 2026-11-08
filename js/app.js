@@ -1,9 +1,39 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794142941';
-import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794142941';
-import { initShop } from './shop.js?v=1794142941';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog, SETTINGS } from './catalog.js?v=1794143783';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794143783';
+import { initShop } from './shop.js?v=1794143783';
 await loadCatalog();
+import { live, startCheckout } from './backend.js?v=1794143783';
+// ---------- store settings from /admin (texts, colours, delivery) ----------
+(function applySettings() {
+  const st = SETTINGS;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  if (Array.isArray(st.announce) && st.announce.length) {
+    const one = st.announce.map((t) => `<span>${esc(t)}</span>`).join('');
+    document.querySelector('.announce-track').innerHTML = one + one;
+  }
+  const h = st.hero;
+  if (h) {
+    const el = document.querySelector('#intro');
+    if (h.eyebrow !== undefined) el.querySelector('.eyebrow').textContent = h.eyebrow;
+    if (h.title !== undefined) el.querySelector('h1').innerHTML = `${esc(h.title)}<br><em>${esc(h.titleItalic || '')}</em>`;
+    if (h.sub !== undefined) el.querySelector('.intro-sub').textContent = h.sub;
+  }
+  const t = st.theme;
+  if (t) {
+    const r = document.documentElement.style;
+    if (t.bg) { r.setProperty('--bg', t.bg); }
+    if (t.ink) r.setProperty('--ink', t.ink);
+    if (t.accent) r.setProperty('--caramel', t.accent);
+    if (t.cream) r.setProperty('--cream', t.cream);
+  }
+  if (st.store && st.store.name) {
+    const [a, ...b] = String(st.store.name).split(' ');
+    document.querySelectorAll('.logo').forEach((l) => { l.innerHTML = b.length ? `${esc(a)} <em>${esc(b.join(' '))}</em>` : esc(a); });
+    document.title = `${st.store.name} — ${document.title.split('—').pop().trim()}`;
+  }
+})();
 
 const $ = (s) => document.querySelector(s);
 // dedicated layouts: phone (touch, small screen) vs desktop — chosen once, not by window size
@@ -19,6 +49,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const BG = new THREE.Color('#E9DFD2');
 const scene = new THREE.Scene();
+if (SETTINGS.theme && SETTINGS.theme.bg) BG.set(SETTINGS.theme.bg); // colour chosen in /admin
 scene.background = BG;
 scene.fog = new THREE.Fog(BG, 6.5, 14);
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -256,7 +287,7 @@ function onClick() {
 // ---------- product ----------
 let size = 'M';
 // deterministic demo stock: a few sizes run low
-function stockOf(item, sz) { let h = 7; for (const c of item.id + sz) h = (h * 31 + c.charCodeAt(0)) % 997; return h % 9 === 0 ? 0 : h % 5 === 0 ? 1 + (h % 3) : 9; }
+function stockOf(item, sz) { if (item.stock && Object.keys(item.stock).length) return item.stock[sz] === undefined ? 9 : Number(item.stock[sz]); if (live()) return 9; let h = 7; for (const c of item.id + sz) h = (h * 31 + c.charCodeAt(0)) % 997; return h % 9 === 0 ? 0 : h % 5 === 0 ? 1 + (h % 3) : 9; }
 function deliveryDate() {
   const d = new Date(); let n = 0;
   while (n < 3) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) n++; }
@@ -315,7 +346,9 @@ try { bag = JSON.parse(localStorage.getItem('ml_bag') || '[]'); } catch { bag = 
 bag = bag.filter((b) => ITEMS.some((i) => i.id === b.id)).map((b) => ({ qty: 1, ...b }));
 let promo = '';
 try { promo = localStorage.getItem('ml_promo') || ''; } catch {}
-const FREE_SHIP = 300;
+const FREE_SHIP = Number((SETTINGS.store || {}).freeShipping ?? 300);
+const SHIP_FEE = Number((SETTINGS.store || {}).shippingFee ?? 12);
+const promoPct = (c) => Number((SETTINGS.promo || {})[c] || 0);
 function saveBag() { try { localStorage.setItem('ml_bag', JSON.stringify(bag)); localStorage.setItem('ml_promo', promo); } catch {} renderBag(); }
 function renderBag() {
   const n = bag.reduce((a, b) => a + b.qty, 0);
@@ -330,8 +363,8 @@ function renderBag() {
       <div class="r">€${it.price * b.qty}<button class="rm" data-rm="${k}">Remove</button></div></div>`;
   }).join('');
   const sub = bag.reduce((a, b) => a + ITEMS.find((i) => i.id === b.id).price * b.qty, 0);
-  const disc = promo === 'WELCOME10' ? Math.round(sub * 0.1) : 0;
-  const ship = !sub ? 0 : sub - disc >= FREE_SHIP ? 0 : 12;
+  const disc = Math.round(sub * promoPct(promo) / 100);
+  const ship = !sub ? 0 : sub - disc >= FREE_SHIP ? 0 : SHIP_FEE;
   $('#bagSub').textContent = `€${sub}`;
   $('#discRow').hidden = !disc; $('#bagDisc').textContent = `−€${disc}`;
   $('#bagShip').textContent = !sub ? '—' : ship ? `€${ship}` : 'Complimentary';
@@ -350,7 +383,7 @@ $('#bagItems').addEventListener('click', (e) => {
 });
 $('#promo').addEventListener('submit', (e) => {
   e.preventDefault(); const v = $('#promoIn').value.trim().toUpperCase();
-  if (v === 'WELCOME10') { promo = v; toast('Code applied — 10% off'); } else { promo = ''; toast(v ? 'This code is not valid' : 'Code removed'); }
+  if (promoPct(v)) { promo = v; toast(`Code applied — ${promoPct(v)}% off`); } else { promo = ''; toast(v ? 'This code is not valid' : 'Code removed'); }
   saveBag();
 });
 function addToBag(item, sz = size) {
@@ -358,6 +391,23 @@ function addToBag(item, sz = size) {
   if (ex) ex.qty++; else bag.push({ id: item.id, size: sz, qty: 1 });
   saveBag();
   toast(`${item.name} — ${item.color}, ${sz} added`);
+}
+// ---------- checkout ----------
+const coBtn = $('#checkoutBtn');
+if (live()) { coBtn.disabled = false; $('#bagNote').innerHTML = 'Secure payment by card, Apple Pay or PayPal.'; }
+coBtn.addEventListener('click', async () => {
+  if (!bag.length) { toast('Your bag is empty'); return; }
+  coBtn.disabled = true; const t0 = coBtn.textContent; coBtn.textContent = 'One moment…';
+  try { location.href = await startCheckout(bag.map((b) => ({ id: b.id, size: b.size, qty: b.qty })), promo); }
+  catch (e) { toast(e.message); coBtn.disabled = false; coBtn.textContent = t0; }
+});
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get('order') === 'success') {
+    bag = []; promo = ''; saveBag();
+    setTimeout(() => toast(`Thank you — order ${q.get('n') ? '#' + q.get('n') + ' ' : ''}is confirmed. A receipt is on its way.`), 1200);
+    history.replaceState(null, '', location.pathname);
+  } else if (q.get('order') === 'cancelled') { setTimeout(() => toast('Payment cancelled — your bag is saved'), 1200); history.replaceState(null, '', location.pathname); }
 }
 function openBag() { $('#bag').classList.add('open'); $('#scrim').classList.add('on'); }
 function closeBag() { $('#bag').classList.remove('open'); $('#scrim').classList.remove('on'); }
@@ -369,7 +419,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794142941');
+  const mod = await import('./tryon.js?v=1794143783');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);

@@ -66,6 +66,7 @@ const C = [
   ['hoodie-pocket', 'Camel', '#B08A5E', '#B08A5E'],
 ];
 
+const D_FABRIC = { knit: 'knit', polo: 'pique', hoodie: 'fleece', 'hoodie-pocket': 'fleece' };
 const CATEGORY = { knit: 'knitwear', polo: 'polos', hoodie: 'hoodies', 'hoodie-pocket': 'hoodies', tee: 'tees', linen: 'shirts' };
 const BADGES = { 'knit-avoine': 'Bestseller', 'hoodie-pocket-chocolat': 'New', 'polo-crme': 'Limited' };
 
@@ -76,24 +77,49 @@ export const ITEMS = C.map(([model, color, hex, button], i) => ({
 }));
 ITEMS.forEach((it) => { it.badge = BADGES[it.id] || ''; });
 
-/** pieces added from photos with tools/add_garment.py (assets/custom/products.json) */
+export const SETTINGS = { store: { freeShipping: 300, shippingFee: 12 }, promo: { WELCOME10: 10 }, builtins: {} };
+
+/** the catalogue: built-in pieces + pieces made from photos (Supabase when connected, else assets/custom/products.json) */
 export async function loadCatalog() {
+  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794143783');
   let extra = [];
-  try {
-    const r = await fetch(`assets/custom/products.json?v=${Date.now() >> 16}`);
-    if (r.ok) extra = await r.json();
-  } catch {}
+  if (live()) {
+    const [rows, st] = await Promise.all([fetchProducts(), fetchSettings()]);
+    Object.assign(SETTINGS, st);
+    extra = (rows || []).filter((r) => r.glb_url).map((r) => ({
+      id: r.id, base: r.base || 'knit', name: r.name, color: r.color, hex: r.hex, price: r.price, fabric: undefined,
+      line: r.line, desc: r.description, details: r.details || [], glb: r.glb_url, texture: r.texture_url, fabricTex: r.fabric_url,
+      model: r.model || {}, ai: true, category: r.category, badge: r.badge, stock: r.stock || {}, sort: r.sort,
+    }));
+    // built-in demo pieces: hide or re-price them from /admin (settings.builtins)
+    const B = SETTINGS.builtins || {};
+    for (let k = ITEMS.length - 1; k >= 0; k--) {
+      const o = B[ITEMS[k].id];
+      if (!o) continue;
+      if (o.visible === false) ITEMS.splice(k, 1);
+      else { if (o.price) ITEMS[k].price = o.price; if (o.name) ITEMS[k].name = o.name; if (o.badge !== undefined) ITEMS[k].badge = o.badge; }
+    }
+  }
+  if (!live() || SETTINGS.keepLocal) {
+    try {
+      const r = await fetch(`assets/custom/products.json?v=${Date.now() >> 16}`);
+      if (r.ok) extra = extra.concat(await r.json());
+    } catch {}
+  }
   for (const p of extra) {
     if (ITEMS.some((i) => i.id === p.id)) continue;
     if (!MODELS[p.base]) continue;
     MODELS[p.id] = { ...MODELS[p.base], ...(p.model || {}), ai: !!p.ai, glb: p.glb, photo: p.texture, photoFabric: p.fabricTex, detail: false, extra: null };
     ITEMS.push({
       id: p.id, model: p.id, base: p.base, color: p.color, hex: p.hex, button: p.hex, name: p.name, price: p.price,
-      fabric: p.fabric || 'fleece', line: p.line || 'Atelier', desc: p.desc || '', details: p.details || [],
-      category: CATEGORY[p.base] || 'hoodies', photo: p.texture, badge: 'Atelier', added: 100 + ITEMS.length, index: ITEMS.length,
+      fabric: p.fabric || D_FABRIC[p.base] || 'fleece', line: p.line || 'Atelier', desc: p.desc || '', details: p.details || [],
+      category: p.category && p.category !== p.base ? p.category : (CATEGORY[p.base] || 'hoodies'), photo: p.texture, badge: p.badge ?? 'Atelier', stock: p.stock || {}, added: 100 + ITEMS.length, index: ITEMS.length,
     });
   }
   ITEMS.forEach((it, i) => { it.index = i; });
+  // categories added from /admin (t-shirts, jackets…) get their own chip
+  const NAMES = { knitwear: 'Knitwear', hoodies: 'Hoodies', polos: 'Polos', tees: 'T-shirts', jackets: 'Jackets', shirts: 'Shirts' };
+  for (const it of ITEMS) if (it.category && !CATEGORIES.some((c) => c[0] === it.category)) CATEGORIES.push([it.category, NAMES[it.category] || it.category]);
   return ITEMS;
 }
 

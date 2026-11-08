@@ -54,8 +54,12 @@ def main():
     ap.add_argument('--type', default='knit', choices=list(AG.DEFAULTS))
     ap.add_argument('--id', default=None); ap.add_argument('--shape', default=None, help='reuse a shape .glb')
     ap.add_argument('--faces', type=int, default=36000)
+    ap.add_argument('--out', default=None, help='output folder (default assets/custom)')
+    ap.add_argument('--no-catalog', action='store_true', help='do not touch products.json (used by the Supabase builder)')
     a = ap.parse_args()
     t0 = time.time()
+    global OUT
+    if a.out: OUT = a.out
     os.makedirs(OUT, exist_ok=True)
     plain = unicodedata.normalize('NFKD', f'{a.name}-{a.color}').encode('ascii', 'ignore').decode()
     gid = a.id or re.sub(r'[^a-z0-9]+', '-', plain.lower()).strip('-')
@@ -266,6 +270,9 @@ def main():
                  upper=round(float(np.linalg.norm(E - S)), 3), fore=round(float(np.linalg.norm(W - E)), 3))
     col = np.median(sides['front']['raw'][sides['front']['m']], 0); hexc = '#%02X%02X%02X' % tuple(int(c) for c in col)
     d = AG.DEFAULTS[a.type]; ver = int(time.time())
+    json.dump(dict(id=gid, model=model, hex=hexc), open(os.path.join(OUT, f'{gid}.json'), 'w'))
+    if a.no_catalog:
+        print(f'✓ {gid} in {time.time() - t0:.0f}s  {model}'); return
     pj = os.path.join(OUT, 'products.json')
     items = json.load(open(pj)) if os.path.exists(pj) else []
     items = [i for i in items if i['id'] != gid]

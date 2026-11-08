@@ -1,0 +1,6 @@
+# Supabase CLI settings for the edge functions
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.checkout]
+verify_jwt = false
