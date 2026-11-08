@@ -86,7 +86,7 @@ export async function loadCatalog() {
   for (const p of extra) {
     if (ITEMS.some((i) => i.id === p.id)) continue;
     if (!MODELS[p.base]) continue;
-    MODELS[p.id] = { ...MODELS[p.base], glb: p.glb, photo: p.texture, detail: false, extra: null };
+    MODELS[p.id] = { ...MODELS[p.base], glb: p.glb, photo: p.texture, photoFabric: p.fabricTex, detail: false, extra: null };
     ITEMS.push({
       id: p.id, model: p.id, base: p.base, color: p.color, hex: p.hex, button: p.hex, name: p.name, price: p.price,
       fabric: p.fabric || 'fleece', line: p.line || 'Atelier', desc: p.desc || '', details: p.details || [],

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794139935';
+import { FABRICS, MODELS } from './catalog.js?v=1794140617';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -95,7 +95,19 @@ function fabricMaterial(item, orig) {
         normal = normalize( N0 + ( T * dxy.x + B * dxy.y ) * sc );
         if ( !gl_FrontFacing ) normal = normalize( mix( normal, nonPerturbedNormal, 0.85 ) );
       }`);
-    if (detailMean) {
+    if (M.photo && M.photoFabric) {
+      // photo on the front and back; where the surface turns away (sides, sleeve seams, shoulders) the plain fabric takes over
+      const ft = loadTex(M.photoFabric, 1); ft.colorSpace = THREE.SRGBColorSpace;
+      sh.uniforms.fabricTex = { value: ft };
+      sh.vertexShader = 'attribute float _facing;\nvarying float vFacing;\n' + sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\n vFacing = _facing;');
+      sh.fragmentShader = 'uniform sampler2D fabricTex; varying float vFacing;\n' + sh.fragmentShader.replace('#include <map_fragment>', `
+        #ifdef USE_MAP
+          vec4 ph = texture2D( map, vMapUv );
+          vec3 fb = texture2D( fabricTex, vUv * 4.0 ).rgb;
+          float fw = smoothstep( 0.2, 0.62, vFacing );
+          diffuseColor.rgb *= mix( fb, ph.rgb, fw );
+        #endif`);
+    } else if (detailMean) {
       sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `
         #ifdef USE_MAP
           vec4 tx = texture2D( map, vMapUv );

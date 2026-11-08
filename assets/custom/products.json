@@ -4,7 +4,7 @@
   "base": "knit",
   "name": "Le Pull Onyx",
   "color": "Cacao",
-  "hex": "#705148",
+  "hex": "#705048",
   "price": 290,
   "fabric": "knit",
   "line": "Maille — Atelier",
@@ -25,6 +25,7 @@
   ],
   "glb": "assets/custom/le-pull-onyx-cacao.glb",
   "texture": "assets/custom/le-pull-onyx-cacao.jpg",
+  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg",
   "category": "knit"
  },
  {
@@ -53,6 +54,7 @@
   ],
   "glb": "assets/custom/le-hoodie-delave-anthracite.glb",
   "texture": "assets/custom/le-hoodie-delave-anthracite.jpg",
+  "fabricTex": "assets/custom/le-hoodie-delave-anthracite_fabric.jpg",
   "category": "hoodie"
  }
 ]

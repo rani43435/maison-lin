@@ -80,9 +80,27 @@ def delight(rgb, m, amount=0.55):
     return out
 
 
+def remove_neck_label(rgb, m, meas):
+    """the care label inside the back neck shows through the collar on front photos: paint it out"""
+    try:
+        import cv2
+    except Exception:
+        return rgb
+    lum = rgb @ np.array([0.299, 0.587, 0.114])
+    H, W = m.shape
+    y0, y1 = int(meas['top']), int(meas['top'] + 0.14 * (meas['hem'] - meas['top']))
+    x0, x1 = int(meas['cx'] - 0.3 * meas['half']), int(meas['cx'] + 0.3 * meas['half'])
+    band = np.zeros_like(m); band[y0:y1, x0:x1] = True
+    hot = band & m & (lum > np.median(lum[m]) + 70)
+    if hot.sum() == 0 or hot.sum() > 0.02 * m.sum(): return rgb
+    hot = ndimage.binary_dilation(hot, iterations=4)
+    out = cv2.inpaint(np.clip(rgb, 0, 255).astype(np.uint8), hot.astype(np.uint8) * 255, 7, cv2.INPAINT_TELEA)
+    return out.astype(np.float32)
+
+
 def fill_background(rgb, m):
     """push the garment colour into the background so edges never sample the backdrop"""
-    core = ndimage.binary_erosion(m, iterations=3)  # skip the anti-aliased rim (it carries backdrop colour)
+    core = ndimage.binary_erosion(m, iterations=max(4, int(max(m.shape) / 160)))  # skip the soft rim (it carries backdrop colour)
     if core.sum() < 100: core = m
     _, (iy, ix) = ndimage.distance_transform_edt(~core, return_indices=True)
     near = rgb[iy, ix]
@@ -90,7 +108,7 @@ def fill_background(rgb, m):
     sig = max(rgb.shape[:2]) / 40
     w = core.astype(np.float32)
     soft = np.stack([ndimage.gaussian_filter(rgb[..., c] * w, sig) for c in range(3)], -1) / (ndimage.gaussian_filter(w, sig)[..., None] + 1e-4)
-    far = ndimage.gaussian_filter(np.minimum(ndimage.distance_transform_edt(~core), 40) / 40, 2)[..., None]
+    far = ndimage.gaussian_filter(np.minimum(ndimage.distance_transform_edt(~core), 14) / 14, 2)[..., None]
     out = near * (1 - far) + soft * far
     out = np.where(far > 0.98, np.median(rgb[core], 0), out)
     out[core] = rgb[core]
@@ -157,6 +175,27 @@ def sleeve_frame(P, shoulder, outward):
     if e2[0] * outward < 0: e2 = -e2
     a = (P - mu) @ e1; b = (P - mu) @ e2
     return dict(mu=mu, e1=e1, e2=e2, a0=np.percentile(a, 1), a1=np.percentile(a, 99.5), b0=np.percentile(b, 2), b1=np.percentile(b, 98))
+
+
+def fabric_tile(rgb, m, meas, size=512):
+    """a plain patch of the fabric (no print), mirrored into a seamless tile — dresses the sides of the piece"""
+    core = ndimage.binary_erosion(m, iterations=12)
+    lum = rgb @ np.array([0.299, 0.587, 0.114])
+    g = np.hypot(ndimage.sobel(lum, 0), ndimage.sobel(lum, 1))
+    side = int(max(24, meas['half'] * 0.35))
+    best, bxy = None, None
+    for y in range(int(meas['top'] + 0.15 * (meas['hem'] - meas['top'])), int(meas['hem'] - side), max(4, side // 4)):
+        for x in range(int(meas['cx'] - meas['half']), int(meas['cx'] + meas['half'] - side), max(4, side // 4)):
+            if not core[y:y + side, x:x + side].all(): continue
+            win = lum[y:y + side, x:x + side]
+            score = g[y:y + side, x:x + side].mean() + 3 * abs(win.mean() - np.median(lum[core]))  # plain and typical
+            if best is None or score < best: best, bxy = score, (x, y)
+    if bxy is None:
+        col = np.median(rgb[m], 0); p = np.ones((side, side, 3)) * col
+    else:
+        x, y = bxy; p = rgb[y:y + side, x:x + side]
+    t = np.concatenate([np.concatenate([p, p[:, ::-1]], 1), np.concatenate([p[::-1], p[::-1, ::-1]], 1)], 0)
+    return Image.fromarray(np.clip(t, 0, 255).astype(np.uint8)).resize((size, size), Image.LANCZOS)
 
 
 # ---------------------------------------------------------------- glb ----
@@ -253,8 +292,10 @@ def main():
     for side, path in (('front', a.front), ('back', a.back)):
         rgb, m = cutout(path)
         if not a.keep_light: rgb = delight(rgb, m)
+        meas = measure(m)
+        if side == 'front': rgb = remove_neck_label(rgb, m, meas)
         rgb = fill_background(rgb, m)
-        sides[side] = dict(rgb=rgb, m=m, meas=measure(m))
+        sides[side] = dict(rgb=rgb, m=m, meas=meas)
         sides[side]['sleeves'] = sleeve_boxes(m, sides[side]['meas'])
         print(f'  {side}: {m.shape[1]}x{m.shape[0]}  garment {m.mean() * 100:.0f}%  {sides[side]["meas"]}')
 
@@ -271,6 +312,7 @@ def main():
         place[side] = (sc, ox + k * HALF, oy)
     atlas = atlas.filter(ImageFilter.UnsharpMask(radius=1.2, percent=40, threshold=2))
     atlas.save(os.path.join(OUT, f'{gid}.jpg'), quality=88)
+    fabric_tile(sides['front']['rgb'], sides['front']['m'], sides['front']['meas']).save(os.path.join(OUT, f'{gid}_fabric.jpg'), quality=88)
 
     # template
     js, bin_ = read_glb(os.path.join(ASSETS, f'{a.type}.glb'))
@@ -323,7 +365,7 @@ def main():
                 # along / across the sleeve axis, template sleeve -> photo sleeve
                 d = np.stack([tx, ty], 1) - tb['mu']
                 t = ((d @ tb['e1']) - tb['a0']) / (tb['a1'] - tb['a0'])
-                q = ((d @ tb['e2']) - tb['b0']) / (tb['b1'] - tb['b0'])
+                q = 0.06 + 0.88 * ((d @ tb['e2']) - tb['b0']) / (tb['b1'] - tb['b0'])  # stay inside the photo's sleeve
                 pa = pb['a0'] + t * (pb['a1'] - pb['a0']); pq = pb['b0'] + q * (pb['b1'] - pb['b0'])
                 pt = pb['mu'] + pa[:, None] * pb['e1'] + pq[:, None] * pb['e2']
                 sx, sy = pt[:, 0], pt[:, 1]
@@ -373,6 +415,9 @@ def main():
                 uv_t = dict(attrs['TEXCOORD_0'][1]) if 'TEXCOORD_0' in attrs else {'componentType': 5126, 'type': 'VEC2'}
                 for k in [k for k in attrs if k.startswith('TEXCOORD_') and k != 'TEXCOORD_0']: del attrs[k]
                 attrs['TEXCOORD_1'] = (uv, uv_t)
+                # how squarely each vertex faces a camera (front or back): the sides get the fabric tile instead of a stretched photo
+                n2 = attrs['NORMAL'][0].astype(np.float64)
+                attrs['_FACING'] = (np.abs(n2[:, 2:3] / (np.linalg.norm(n2, axis=1, keepdims=True) + 1e-9)).astype(np.float32), {'componentType': 5126, 'type': 'SCALAR'})
                 print(f'  prim {mi}.{pi}: {len(pos)} → {len(P2)} verts ({back_face.mean() * 100:.0f}% back faces)')
             new_attr = {}
             for k, (arr, t) in attrs.items():
@@ -405,7 +450,7 @@ def main():
     items = [i for i in items if i['id'] != gid]
     items.append(dict(id=gid, base=a.type, name=a.name, color=a.color or 'Custom', hex=hexc, price=a.price,
                       fabric=d['fabric'], line=f"{d['line']} — Atelier", desc=a.desc or d['desc'], details=d['details'],
-                      glb=f'assets/custom/{gid}.glb', texture=f'assets/custom/{gid}.jpg', category=a.type.split('-')[0]))
+                      glb=f'assets/custom/{gid}.glb', texture=f'assets/custom/{gid}.jpg', fabricTex=f'assets/custom/{gid}_fabric.jpg', category=a.type.split('-')[0]))
     json.dump(items, open(pj, 'w'), indent=1, ensure_ascii=False)
     print(f'✓ added {gid}: {a.name} — {a.color} €{a.price}  colour {hexc}')
     print(f'  {len(items)} custom piece(s) in assets/custom/products.json')

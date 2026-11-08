@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794139935';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794139935';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794140617';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794140617';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
