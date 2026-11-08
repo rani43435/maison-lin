@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794141803';
-import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794141803';
-import { initShop } from './shop.js?v=1794141803';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794142941';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794142941';
+import { initShop } from './shop.js?v=1794142941';
 await loadCatalog();
 
 const $ = (s) => document.querySelector(s);
@@ -369,7 +369,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794141803');
+  const mod = await import('./tryon.js?v=1794142941');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
@@ -499,7 +499,7 @@ function restArmDirs(g) {
     const pu = g.root.worldToLocal(u.getWorldPosition(new THREE.Vector3()));
     const pf = g.root.worldToLocal(f.getWorldPosition(new THREE.Vector3()));
     const rest = pf.sub(pu).normalize();
-    if (g.model && g.model.ai) { out[s] = rest; continue; } // AI shapes already hang naturally
+    if (g.model && g.model.ai) { out[s] = new THREE.Vector3(rest.x + (s === 'l' ? 0.13 : -0.13), rest.y, rest.z + 0.03).normalize(); continue; } // AI shapes hang naturally: just ease the sleeves off the body
     const sx = Math.sign(rest.x) || (s === 'l' ? 1 : -1);
     out[s] = new THREE.Vector3(0.24 * sx, -1, rest.z * 0.3 + 0.02).normalize();
   }

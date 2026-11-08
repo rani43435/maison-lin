@@ -53,7 +53,7 @@ def main():
     ap.add_argument('--price', type=int, default=250); ap.add_argument('--desc', default=None)
     ap.add_argument('--type', default='knit', choices=list(AG.DEFAULTS))
     ap.add_argument('--id', default=None); ap.add_argument('--shape', default=None, help='reuse a shape .glb')
-    ap.add_argument('--faces', type=int, default=24000)
+    ap.add_argument('--faces', type=int, default=36000)
     a = ap.parse_args()
     t0 = time.time()
     os.makedirs(OUT, exist_ok=True)
@@ -71,54 +71,67 @@ def main():
         ys, xs = np.nonzero(m)
         sides[side] = dict(rgb=AG.fill_background(rgb, m), raw=rgb, m=m, meas=meas,
                            bbox=(xs.min(), ys.min(), xs.max(), ys.max()))
-    # ---- shape
-    shape = a.shape or os.path.join('/tmp', f'{gid}_shape.glb')
-    if not a.shape:
-        print('  AI shape (Hunyuan3D-2mv)…'); ai_shape(a.front, a.back, shape)
-    print(f'  shape ready ({time.time() - t0:.0f}s)')
-
-    import bpy, bmesh
+    # ---- shape: the photo's own silhouette, inflated — torso as a soft slab, each sleeve as its own tube
+    import bpy, bmesh, collections
     from mathutils import Vector
+    from scipy import ndimage as ndi
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=shape)
-    meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
-    for o in meshes:
-        o.data.transform(o.matrix_world); o.matrix_world.identity(); o.parent = None
-    for o in [o for o in bpy.context.scene.objects if o.type != 'MESH']: bpy.data.objects.remove(o)
-    bpy.ops.object.select_all(action='DESELECT')
-    for o in meshes: o.select_set(True)
-    bpy.context.view_layer.objects.active = meshes[0]
-    if len(meshes) > 1: bpy.ops.object.join()
-    ob = bpy.context.active_object; ob.name = 'Shirt'
-    me = ob.data
-    # decimate + weld + smooth a little
+    F = sides['front']; Fm = F['meas']; m = F['m']
+    kpx = (COLLAR_Y - HEM_Y) / (Fm['hem'] - Fm['top'])          # metres per photo pixel
+    step = max(1, int(round(0.0045 / kpx)))                      # ~4.5 mm grid
+    M = m[::step, ::step]
+    H, W = M.shape
+    gx = np.arange(W) * step; gy = np.arange(H) * step
+    Xg = (gx - Fm['cx']) * kpx; Zg = HEM_Y + (Fm['hem'] - gy) * kpx
+    torso_half = Fm['half'] * kpx
+    XX = np.broadcast_to(Xg[None, :], M.shape)
+    ov = 2  # grid cells of overlap so sleeve and body never show a gap between them
+    torso = M & (np.abs(XX) <= torso_half + step * kpx)
+    sleeveL = M & (XX > torso_half - ov * step * kpx); sleeveR = M & (XX < -torso_half + ov * step * kpx)
+    parts = [('torso', torso, 0.042, 0.06), ('L', sleeveL, 0.05, 0.05), ('R', sleeveR, 0.05, 0.05)]  # a sweater on a hanger is flat
+    from skimage import measure as skm
+    verts, faces = [], []
+    cell = step * kpx
+    for name, R, dmax, rad in parts:
+        lab, n = ndi.label(R)
+        if n == 0: continue
+        if n > 1:
+            sizes = ndi.sum(R, lab, range(1, n + 1)); R = lab == (1 + int(np.argmax(sizes)))
+        d = ndi.distance_transform_edt(np.pad(R, 1)) [1:-1, 1:-1] * cell
+        if name == 'torso':
+            t = np.clip(d / rad, 0, 1); h = dmax * np.sqrt(1 - (1 - t) ** 2)
+        else:
+            rowmax = np.zeros_like(d)
+            for i in range(H):
+                if R[i].any(): rowmax[i, R[i]] = d[i, R[i]].max()
+            rr = max(float(np.median(rowmax[R])), 1e-4)
+            dd = np.minimum(d, rr); h = np.sqrt(np.clip(2 * rr * dd - dd * dd, 0, None)) * 0.7
+        # signed field in a (z, x, depth) volume: inside where |depth| < h  -> watertight surface
+        nd = int(np.ceil(h.max() / cell)) + 3
+        dep = (np.arange(-nd, nd + 1) * cell)
+        vol = (h[:, :, None] * np.where(dep[None, None, :] < 0, 1.0, 0.92)) - np.abs(dep[None, None, :])
+        vol = np.where(R[:, :, None], vol, -cell)
+        vol = np.pad(vol, 1, constant_values=-cell)
+        vv, ff, _, _ = skm.marching_cubes(vol, 0.0)
+        vv -= 1
+        # volume index -> metres: rows = photo y, cols = photo x, depth (Blender y, front is -y)
+        Xv = np.interp(vv[:, 1], np.arange(W), Xg); Zv = np.interp(vv[:, 0], np.arange(H), Zg)
+        Yv = (vv[:, 2] - nd) * cell
+        base = len(verts); verts.extend(np.stack([Xv, Yv, Zv], 1).tolist()); faces.extend((ff + base).tolist())
+    me = bpy.data.meshes.new('Shirt'); me.from_pydata(verts, [], faces); me.update()
+    bm = bmesh.new(); bm.from_mesh(me)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new('Shirt', me); bpy.context.scene.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob
+    sm_ = ob.modifiers.new('cs', 'SMOOTH'); sm_.iterations = 8; sm_.factor = 0.5
     if len(me.polygons) > a.faces:
-        md = ob.modifiers.new('d', 'DECIMATE'); md.ratio = a.faces / len(me.polygons)
-        md2 = ob.modifiers.new('s', 'CORRECTIVE_SMOOTH'); md2.iterations = 2; md2.factor = 0.4
-        dg = bpy.context.evaluated_depsgraph_get(); nm = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
-        ob.modifiers.clear(); ob.data = nm; me = nm
-    bm = bmesh.new(); bm.from_mesh(me); bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me); bm.free()
-
-    # Blender: z up, the photos' front looks along -y (glTF +z)
-    V = np.array([v.co[:] for v in me.vertices])
-    mn, mx = V.min(0), V.max(0)
-    # mesh <-> front photo: the silhouette is the photo's, so the bounding boxes line up
-    F = sides['front']; fx0, fy0, fx1, fy1 = F['bbox']; Fm = F['meas']
-    sx_px = (fx1 - fx0) / (mx[0] - mn[0]); sz_px = (fy1 - fy0) / (mx[2] - mn[2])
-    s_px = (sx_px + sz_px) / 2
-    to_mesh = lambda px, py: (mn[0] + (px - fx0) / s_px, mx[2] - (py - fy0) / s_px)
-    _, top_z = to_mesh(Fm['cx'], Fm['top']); _, hem_z = to_mesh(Fm['cx'], Fm['hem'])
-    cx_m, _ = to_mesh(Fm['cx'], 0)
-    # scale/move: collar top -> COLLAR_Y, hem -> HEM_Y, centred
-    k = (COLLAR_Y - HEM_Y) / (top_z - hem_z)
-    cy = (mn[1] + mx[1]) / 2
-    V2 = np.stack([(V[:, 0] - cx_m) * k, (V[:, 1] - cy) * k, (V[:, 2] - hem_z) * k + HEM_Y], 1)
-    for v, p in zip(me.vertices, V2): v.co = p
-    me.update()
-    M2W = lambda px, py: ((to_mesh(px, py)[0] - cx_m) * k, (to_mesh(px, py)[1] - hem_z) * k + HEM_Y)  # front photo px -> store metres (x, z)
-    torso_half = Fm['half'] / s_px * k
-    print(f'  scaled ×{k:.3f}, torso half-width {torso_half:.3f} m, {len(me.vertices)} verts')
+        dm = ob.modifiers.new('d', 'DECIMATE'); dm.ratio = a.faces / len(me.polygons)
+    dg = bpy.context.evaluated_depsgraph_get(); nm = bpy.data.meshes.new_from_object(ob.evaluated_get(dg)); ob.modifiers.clear(); ob.data = nm; me = nm
+    part_sleeve = np.abs(np.array([v.co.x for v in me.vertices])) > torso_half + 0.5 * step * kpx
+    M2W = lambda px, py: ((px - Fm['cx']) * kpx, HEM_Y + (Fm['hem'] - py) * kpx)
+    print(f'  inflated: {len(me.vertices)} verts, {len(me.polygons)} faces, torso half-width {torso_half:.3f} m ({time.time() - t0:.0f}s)')
 
     # ---- joints from the photo's sleeves
     sl = AG.sleeve_boxes(F['m'], Fm)
@@ -154,7 +167,6 @@ def main():
         B('upperarm.' + s, S, E, 'shoulder.' + s); B('forearm.' + s, E, W, 'upperarm.' + s)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # ---- weights: hanging sleeves sit beside the torso -> arm = outside the torso column, below the shoulder
     V = np.array([v.co[:] for v in me.vertices]); x, y, z = V.T
     names = ['hips', 'spine', 'chest', 'neck'] + [f'{b}.{s}' for s in 'LR' for b in ('shoulder', 'upperarm', 'forearm')]
     Wt = {n: np.zeros(len(V)) for n in names}
@@ -164,10 +176,9 @@ def main():
         S, E, Wr = J[s]; m = side == s
         P = V[m]
         u = (E - S) / np.linalg.norm(E - S); tt = (P - S) @ u
-        d1, _ = AG_seg(P, S, E); d2, _ = AG_seg(P, E, Wr); d = np.minimum(d1, d2)
-        outside = sm(torso_half * 1.0, torso_half * 1.16, np.abs(P[:, 0]))
-        near = 1 - sm(0.09, 0.16, d)
-        a_ = np.clip(np.maximum(outside * sm(-0.06, 0.04, tt), near * sm(0.02, 0.10, tt) * outside), 0, 1)
+        a_ = np.where(part_sleeve[m], 1.0, 0.0)
+        # the very top of the sleeve (shoulder cap) blends with the body
+        a_ = a_ * (0.35 + 0.65 * sm(-0.04, 0.06, tt))
         Lu = np.linalg.norm(E - S); fore = sm(Lu - 0.05, Lu + 0.05, tt)
         sh = a_ * (1 - sm(0.0, 0.10, tt)) * 0.5
         Wt[f'upperarm.{s}'][m] = a_ * (1 - fore) - sh; Wt[f'forearm.{s}'][m] = a_ * fore
@@ -196,12 +207,13 @@ def main():
     atlas.save(os.path.join(OUT, f'{gid}.jpg'), quality=90)
     AG.fabric_tile(sides['front']['raw'], sides['front']['m'], Fm).save(os.path.join(OUT, f'{gid}_fabric.jpg'), quality=88)
     # store metres -> photo pixels for each side (back: its own bbox, mirrored)
-    V0 = np.array([v.co[:] for v in me.vertices]); bx0, bx1 = V0[:, 0].min(), V0[:, 0].max(); bz0, bz1 = V0[:, 2].min(), V0[:, 2].max()
+    V0 = np.array([v.co[:] for v in me.vertices])
+    fx0, fy0, fx1, fy1 = sides['front']['bbox']; bx0_, by0_, bx1_, by1_ = sides['back']['bbox']
     def px_of(sd, X, Z):
-        x0, y0, x1, y1 = sides[sd]['bbox']
-        u = (X - bx0) / (bx1 - bx0)
-        if sd == 'back': u = 1 - u
-        px = x0 + u * (x1 - x0); py = y0 + (bz1 - Z) / (bz1 - bz0) * (y1 - y0)
+        px = Fm['cx'] + X / kpx; py = Fm['hem'] - (Z - HEM_Y) / kpx      # front photo pixel
+        if sd == 'back':  # same point seen from behind: mirror inside the back photo's own box
+            u = (px - fx0) / (fx1 - fx0); v_ = (py - fy0) / (fy1 - fy0)
+            px = bx1_ - u * (bx1_ - bx0_); py = by0_ + v_ * (by1_ - by0_)
         scl, ox, oy = place[sd]
         return (px * scl + ox) / (HALF * 2), 1 - (py * scl + oy) / HALF  # Blender uv: v up
     uv0 = me.uv_layers.new(name='UVMap'); uv1 = me.uv_layers.new(name='photo')
