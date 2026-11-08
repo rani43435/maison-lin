@@ -1,34 +1,5 @@
 [
  {
-  "id": "le-pull-onyx-cacao",
-  "base": "knit",
-  "name": "Le Pull Onyx",
-  "color": "Cacao",
-  "hex": "#705048",
-  "price": 290,
-  "fabric": "knit",
-  "line": "Maille — Atelier",
-  "desc": "A relaxed rib-knit crewneck in a mottled cacao yarn, with an embroidered racing graphic on the chest and dropped shoulders.",
-  "details": [
-   [
-    "Fabric",
-    "Cotton blend"
-   ],
-   [
-    "Fit",
-    "Easy"
-   ],
-   [
-    "Care",
-    "Wash cold, dry flat"
-   ]
-  ],
-  "glb": "assets/custom/le-pull-onyx-cacao.glb?v=1794140761",
-  "texture": "assets/custom/le-pull-onyx-cacao.jpg?v=1794140761",
-  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg?v=1794140761",
-  "category": "knit"
- },
- {
   "id": "le-hoodie-delave-anthracite",
   "base": "hoodie",
   "name": "Le Hoodie Délavé",
@@ -56,5 +27,41 @@
   "texture": "assets/custom/le-hoodie-delave-anthracite.jpg?v=1794140771",
   "fabricTex": "assets/custom/le-hoodie-delave-anthracite_fabric.jpg?v=1794140771",
   "category": "hoodie"
+ },
+ {
+  "id": "le-pull-onyx-cacao",
+  "base": "knit",
+  "name": "Le Pull Onyx",
+  "color": "Cacao",
+  "hex": "#705148",
+  "price": 290,
+  "fabric": "knit",
+  "line": "Maille — Atelier",
+  "desc": "A relaxed rib-knit crewneck in a mottled cacao yarn, with an embroidered racing graphic on the chest and dropped shoulders.",
+  "details": [
+   [
+    "Fabric",
+    "Cotton blend"
+   ],
+   [
+    "Fit",
+    "Easy"
+   ],
+   [
+    "Care",
+    "Wash cold, dry flat"
+   ]
+  ],
+  "glb": "assets/custom/le-pull-onyx-cacao.glb?v=1794141657",
+  "texture": "assets/custom/le-pull-onyx-cacao.jpg?v=1794141657",
+  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg?v=1794141657",
+  "model": {
+   "shoulderY": 1.4,
+   "shoulderW": 0.369,
+   "upper": 0.334,
+   "fore": 0.308
+  },
+  "ai": true,
+  "category": "knit"
  }
 ]

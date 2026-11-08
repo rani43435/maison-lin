@@ -10,9 +10,12 @@ for d in sorted(glob.glob(os.path.join(ROOT, 'inbox', '*/'))):
     if not (pics['front'] and pics['back'] and os.path.exists(info_p)):
         print('skip', d, '(needs front.*, back.* and info.json)'); continue
     info = json.load(open(info_p))
-    cmd = [sys.executable, os.path.join(ROOT, 'tools', 'add_garment.py'), pics['front'], pics['back'],
-           '--type', info.get('type', 'hoodie'), '--name', info['name'], '--color', info.get('color', ''), '--price', str(info.get('price', 200))]
-    if info.get('desc'): cmd += ['--desc', info['desc']]
-    subprocess.run(cmd, check=True)
+    args = [pics['front'], pics['back'], '--type', info.get('type', 'knit'), '--name', info['name'],
+            '--color', info.get('color', ''), '--price', str(info.get('price', 200))]
+    if info.get('desc'): args += ['--desc', info['desc']]
+    # AI shape first (true silhouette); template projection as a fallback
+    r = subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'ai_garment.py')] + args)
+    if r.returncode != 0:
+        subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'add_garment.py')] + args, check=True)
     shutil.rmtree(d); done += 1
 print(f'{done} garment(s) added')

@@ -11,8 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install numpy pillow scipy rembg onnxruntime
+        with: { python-version: '3.13' }
+      - run: pip install numpy pillow scipy rembg onnxruntime opencv-python-headless bpy gradio_client
       - run: python3 tools/process_inbox.py
       - run: bash tools/bump.sh || true
       - run: |

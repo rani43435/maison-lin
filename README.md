@@ -8,7 +8,16 @@ A demo luxury boutique: browse a 3D clothing rail, turn each piece 360°, add it
 
 Run locally: `python3 -m http.server` and open http://localhost:8000 (camera needs localhost or https).
 
-## Add a garment from two photos
+## Add a garment from two photos (AI shape)
+
+```
+python3 tools/ai_garment.py front.jpg back.jpg --type knit --name "Le Pull Onyx" --color "Cacao" --price 290
+```
+
+Hunyuan3D-2mv (Hugging Face) builds the real shape from both photos in seconds; Blender rigs it with the store's
+skeleton; the photos are projected onto it and the sides get a seamless tile of the same fabric. ~30 s per piece.
+
+### Older method: template projection
 
 The site can turn a front and a back photo into a rigged 3D piece (rail, 360° view and AR all work with it):
 

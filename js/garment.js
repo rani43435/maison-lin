@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794140928';
+import { FABRICS, MODELS } from './catalog.js?v=1794141803';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
