@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794140617';
-import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794140617';
-import { initShop } from './shop.js?v=1794140617';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794140928';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794140928';
+import { initShop } from './shop.js?v=1794140928';
 await loadCatalog();
 
 const $ = (s) => document.querySelector(s);
@@ -369,7 +369,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794140617');
+  const mod = await import('./tryon.js?v=1794140928');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);

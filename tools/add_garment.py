@@ -182,7 +182,7 @@ def fabric_tile(rgb, m, meas, size=512):
     core = ndimage.binary_erosion(m, iterations=12)
     lum = rgb @ np.array([0.299, 0.587, 0.114])
     g = np.hypot(ndimage.sobel(lum, 0), ndimage.sobel(lum, 1))
-    side = int(max(24, meas['half'] * 0.35))
+    side = int(max(32, meas['half'] * 0.55))
     best, bxy = None, None
     for y in range(int(meas['top'] + 0.15 * (meas['hem'] - meas['top'])), int(meas['hem'] - side), max(4, side // 4)):
         for x in range(int(meas['cx'] - meas['half']), int(meas['cx'] + meas['half'] - side), max(4, side // 4)):
@@ -194,7 +194,14 @@ def fabric_tile(rgb, m, meas, size=512):
         col = np.median(rgb[m], 0); p = np.ones((side, side, 3)) * col
     else:
         x, y = bxy; p = rgb[y:y + side, x:x + side]
-    t = np.concatenate([np.concatenate([p, p[:, ::-1]], 1), np.concatenate([p[::-1], p[::-1, ::-1]], 1)], 0)
+    # seamless without mirroring (mirrors read as a kaleidoscope): cross-fade with itself shifted by half
+    n = p.shape[0]; p = p[:n, :n]
+    r = np.roll(np.roll(p, n // 2, 0), n // 2, 1)
+    yy, xx = np.mgrid[0:n, 0:n] + 0.5
+    w = (np.sin(np.pi * xx / n) * np.sin(np.pi * yy / n))[..., None] ** 0.7
+    t = w * p + (1 - w) * r
+    mean = t.reshape(-1, 3).mean(0)
+    t = mean + (t - mean) * 0.7  # calmer, so the repeat does not show
     return Image.fromarray(np.clip(t, 0, 255).astype(np.uint8)).resize((size, size), Image.LANCZOS)
 
 
@@ -442,6 +449,7 @@ def main():
     write_glb(os.path.join(OUT, f'{gid}.glb'), js, new_arrays)
 
     # product entry
+    import time; ver = int(time.time())
     fm = sides['front']['m']; col = np.median(sides['front']['rgb'][fm], 0)
     hexc = '#%02X%02X%02X' % tuple(int(c) for c in col)
     d = DEFAULTS[a.type]
@@ -450,7 +458,7 @@ def main():
     items = [i for i in items if i['id'] != gid]
     items.append(dict(id=gid, base=a.type, name=a.name, color=a.color or 'Custom', hex=hexc, price=a.price,
                       fabric=d['fabric'], line=f"{d['line']} — Atelier", desc=a.desc or d['desc'], details=d['details'],
-                      glb=f'assets/custom/{gid}.glb', texture=f'assets/custom/{gid}.jpg', fabricTex=f'assets/custom/{gid}_fabric.jpg', category=a.type.split('-')[0]))
+                      glb=f'assets/custom/{gid}.glb?v={ver}', texture=f'assets/custom/{gid}.jpg?v={ver}', fabricTex=f'assets/custom/{gid}_fabric.jpg?v={ver}', category=a.type.split('-')[0]))
     json.dump(items, open(pj, 'w'), indent=1, ensure_ascii=False)
     print(f'✓ added {gid}: {a.name} — {a.color} €{a.price}  colour {hexc}')
     print(f'  {len(items)} custom piece(s) in assets/custom/products.json')

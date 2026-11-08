@@ -23,9 +23,9 @@
     "Wash cold, dry flat"
    ]
   ],
-  "glb": "assets/custom/le-pull-onyx-cacao.glb",
-  "texture": "assets/custom/le-pull-onyx-cacao.jpg",
-  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg",
+  "glb": "assets/custom/le-pull-onyx-cacao.glb?v=1794140761",
+  "texture": "assets/custom/le-pull-onyx-cacao.jpg?v=1794140761",
+  "fabricTex": "assets/custom/le-pull-onyx-cacao_fabric.jpg?v=1794140761",
   "category": "knit"
  },
  {
@@ -52,9 +52,9 @@
     "Wash cold, inside out"
    ]
   ],
-  "glb": "assets/custom/le-hoodie-delave-anthracite.glb",
-  "texture": "assets/custom/le-hoodie-delave-anthracite.jpg",
-  "fabricTex": "assets/custom/le-hoodie-delave-anthracite_fabric.jpg",
+  "glb": "assets/custom/le-hoodie-delave-anthracite.glb?v=1794140771",
+  "texture": "assets/custom/le-hoodie-delave-anthracite.jpg?v=1794140771",
+  "fabricTex": "assets/custom/le-hoodie-delave-anthracite_fabric.jpg?v=1794140771",
   "category": "hoodie"
  }
 ]

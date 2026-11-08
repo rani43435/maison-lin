@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { FABRICS, MODELS } from './catalog.js?v=1794140617';
+import { FABRICS, MODELS } from './catalog.js?v=1794140928';
 
 const loader = new GLTFLoader();
 const texLoader = new THREE.TextureLoader();
@@ -103,7 +103,7 @@ function fabricMaterial(item, orig) {
       sh.fragmentShader = 'uniform sampler2D fabricTex; varying float vFacing;\n' + sh.fragmentShader.replace('#include <map_fragment>', `
         #ifdef USE_MAP
           vec4 ph = texture2D( map, vMapUv );
-          vec3 fb = texture2D( fabricTex, vUv * 4.0 ).rgb;
+          vec3 fb = texture2D( fabricTex, vUv * 2.6 ).rgb;
           float fw = smoothstep( 0.2, 0.62, vFacing );
           diffuseColor.rgb *= mix( fb, ph.rgb, fw );
         #endif`);
