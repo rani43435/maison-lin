@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1794102939">
+<link rel="stylesheet" href="style.css?v=1794104400">
 <script type="importmap">
 { "imports": { "three": "./lib/three/three.module.min.js", "three/addons/": "./lib/three/addons/" } }
 </script>
@@ -34,9 +34,9 @@
       <a class="nav-link" href="#" data-act="atelier">Atelier</a>
       <a class="nav-link" href="#" data-shop="new">New in</a>
       <a class="nav-link" href="#" data-shop="all">Shop</a>
-      <a class="nav-link" href="#" data-shop="knitwear">Knitwear</a>
-      <a class="nav-link" href="#" data-shop="hoodies">Hoodies</a>
-      <a class="nav-link" href="#" data-shop="polos">Polos</a>
+      <a class="nav-link" href="#" data-rail="knitwear">Knitwear</a>
+      <a class="nav-link" href="#" data-rail="hoodies">Hoodies</a>
+      <a class="nav-link" href="#" data-rail="polos">Polos</a>
     </nav>
   </div>
   <a class="logo" href="#" data-act="home">Maison <em>Lin</em></a>
@@ -63,6 +63,7 @@
   <div class="pbar-dots" id="pbDots"></div>
   <div class="pbar-actions"><button class="btn ghost" data-act="details">Details</button><button class="btn primary" data-act="tryOnCur"><span class="dot"></span>Try it on</button></div>
 </div>
+<div class="rail-filter" id="railFilter"><span id="rfName"></span><button data-act="clearRail">Show all</button></div>
 <div class="rail-hint" id="railHint"><span class="line"></span>Drag to browse<span class="line"></span></div>
 <div class="counter" id="counter"><span id="cIdx">01</span> / <span id="cTot">08</span></div>
 
@@ -111,9 +112,9 @@
     <a href="#" data-act="atelier">Atelier <small>3D rail</small></a>
     <a href="#" data-shop="new">New in</a>
     <a href="#" data-shop="all">Shop all</a>
-    <a href="#" data-shop="knitwear">Knitwear</a>
-    <a href="#" data-shop="hoodies">Hoodies</a>
-    <a href="#" data-shop="polos">Polos</a>
+    <a href="#" data-rail="knitwear">Knitwear</a>
+    <a href="#" data-rail="hoodies">Hoodies</a>
+    <a href="#" data-rail="polos">Polos</a>
     <a href="#" data-act="wish">Wishlist</a>
     <a href="#" data-act="sizeGuide">Size guide</a>
   </nav>
@@ -187,6 +188,6 @@
 <div id="credits" class="credits"><button class="close" data-act="closeCredits" aria-label="Close">×</button><p class="eyebrow">Garment models — CC BY 4.0</p><ul id="creditList"></ul><p class="p-note">Recoloured, refitted and rigged for Maison Lin.</p></div>
 <div id="toast" class="toast"></div>
 
-<script type="module" src="js/app.js?v=1794102939"></script>
+<script type="module" src="js/app.js?v=1794104400"></script>
 </body>
 </html>

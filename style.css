@@ -377,3 +377,12 @@ body.phone .bag-foot{padding:18px 20px calc(20px + env(safe-area-inset-bottom))}
 body.phone .p-perks,body.phone .p-related{display:none}
 body.phone .product .acc:not(.open){display:none}
 body.phone .modal-card{padding:34px 18px 24px}
+
+/* rail category filter */
+.rail-filter{position:fixed;left:50%;top:calc(var(--ann) + 78px);transform:translate(-50%,-8px);z-index:11;display:flex;align-items:center;gap:14px;background:rgba(245,239,230,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:30px;padding:8px 8px 8px 18px;font-size:11px;white-space:nowrap;letter-spacing:.2em;text-transform:uppercase;opacity:0;pointer-events:none;transition:all .45s var(--ease)}
+.rail-filter.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.rail-filter button{height:30px;padding:0 14px;border-radius:20px;background:var(--ink);color:var(--cream);font-size:10px;letter-spacing:.2em;text-transform:uppercase}
+body.mode-product .rail-filter,body.shop-open .rail-filter{opacity:0;pointer-events:none}
+.menu-links [data-rail].on::after{right:0}
+body.phone .rail-filter{top:calc(var(--ann) + 58px + env(safe-area-inset-top))}
+body.railf .intro{opacity:0;transform:translateY(-10px)}

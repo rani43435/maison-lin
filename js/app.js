@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794102939';
-import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794102939';
-import { initShop } from './shop.js?v=1794102939';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog } from './catalog.js?v=1794104400';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794104400';
+import { initShop } from './shop.js?v=1794104400';
 await loadCatalog();
 
 const $ = (s) => document.querySelector(s);
@@ -53,16 +53,24 @@ const rail = new THREE.Group(); scene.add(rail);
 const brass = new THREE.MeshPhysicalMaterial({ color: '#b48a55', metalness: 1, roughness: 0.28, clearcoat: 0.4 });
 const walnut = new THREE.MeshPhysicalMaterial({ color: '#4a3020', roughness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.4 });
 const hangerWood = new THREE.MeshPhysicalMaterial({ color: '#c9a77e', roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.3 });
-{
-  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, railLen, 24), brass);
-  rod.rotation.z = Math.PI / 2; rod.position.set(railLen / 2 - 0.7, RAIL_Y, 0); rod.castShadow = true; rail.add(rod);
-  for (const x of [-0.7, railLen - 0.7]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, RAIL_Y + 0.04, 24), walnut);
-    post.position.set(x, (RAIL_Y + 0.04) / 2, 0); post.castShadow = true; rail.add(post);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.034, 24, 16), brass); cap.position.set(x, RAIL_Y + 0.05, 0); rail.add(cap);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.62), walnut); foot.position.set(x, 0.015, 0); foot.castShadow = true; rail.add(foot);
-  }
+const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 1, 24), brass);
+rod.rotation.z = Math.PI / 2; rod.castShadow = true; rail.add(rod);
+const endR = new THREE.Group(); rail.add(endR);
+for (const x of [-0.7, 0]) {
+  const end = x < 0 ? rail : endR;
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, RAIL_Y + 0.04, 24), walnut);
+  post.position.set(x, (RAIL_Y + 0.04) / 2, 0); post.castShadow = true; end.add(post);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.034, 24, 16), brass); cap.position.set(x, RAIL_Y + 0.05, 0); end.add(cap);
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.62), walnut); foot.position.set(x, 0.015, 0); foot.castShadow = true; end.add(foot);
 }
+let railLenNow = railLen;
+// rail length follows the number of pieces on it (category filter)
+function sizeRail(len, instant) {
+  railLenNow = instant ? len : railLenNow + (len - railLenNow) * 0.12;
+  rod.scale.y = railLenNow; rod.position.set(railLenNow / 2 - 0.7, RAIL_Y, 0);
+  endR.position.x = railLenNow - 0.7;
+}
+sizeRail(railLen, true);
 // ---------- rope ----------
 const ROPE = 0.2, ROPE_R = 0.0026;
 const ropeGeoDown = new THREE.CylinderGeometry(ROPE_R, ROPE_R, 1, 8, 1, true).translate(0, -0.5, 0);
@@ -105,6 +113,7 @@ async function buildRail(progress) {
     const g = await makeGarment(item);
     const pivot = new THREE.Group();
     pivot.position.set(item.index * SPACING, RAIL_Y + 0.0, 0);
+    pivot.userData.x = item.index * SPACING;
     const at = attachPoint(g);
     const inner = new THREE.Group(); inner.position.set(0, -(at.y + ROPE), -at.z); pivot.add(inner);
     const spin = new THREE.Group(); inner.add(spin);
@@ -120,14 +129,34 @@ async function buildRail(progress) {
     hit.position.y = 1.12; hit.userData.slot = slots.length; inner.add(hit);
     pivot.rotation.y = (Math.random() - 0.5) * 0.25;
     rail.add(pivot);
-    slots.push({ item, pivot, inner, spin, g, hit, at, ropeA, ropeB, tipA, tipB, rope: 'intact', tc: 0, ph: { tz: 0, wz: 0, tx: 0, wx: 0, sz: 0, vz: 0, sx: 0, vx: 0, pz: 0, pvz: 0, hz: 0, hv: 0 }, dU: restArmDirs(g), armsDirty: true, turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0, drop: 0 });
+    slots.push({ k: item.index, x: item.index * SPACING, shown: true, knot, item, pivot, inner, spin, g, hit, at, ropeA, ropeB, tipA, tipB, rope: 'intact', tc: 0, ph: { tz: 0, wz: 0, tx: 0, wx: 0, sz: 0, vz: 0, sx: 0, vx: 0, pz: 0, pvz: 0, hz: 0, hv: 0 }, dU: restArmDirs(g), armsDirty: true, turn: pivot.rotation.y, baseTurn: pivot.rotation.y, lift: 0, drop: 0 });
   }
 }
 
 // ---------- state ----------
 const thumbs = {}; // id -> {f, b} studio shots for the store
 let offset = 0, target = 0, vel = 0;
-const minOff = 0, maxOff = (N - 1) * SPACING;
+const minOff = 0; let maxOff = (N - 1) * SPACING;
+let vis = ITEMS.map((_, i) => i); // slot indices on the rail, in order
+let railCat = 'all';
+/** show only one category on the rail (hoodies, knitwear, polos) — the others leave the rail */
+function setRailFilter(cat) {
+  railCat = cat;
+  if (mode === 'product') closeProduct();
+  vis = slots.map((s, i) => i).filter((i) => cat === 'all' || slots[i].item.category === cat);
+  if (!vis.length) { vis = slots.map((s, i) => i); railCat = 'all'; }
+  slots.forEach((s) => { s.shown = false; });
+  vis.forEach((i, k) => { const s = slots[i]; if (!s.shown) { s.shown = true; } s.k = k; });
+  slots.forEach((s) => { s.pivot.visible = s.knot.visible = s.shown; if (!s.shown) s.ropeA.visible = s.tipA.visible = false; else s.ropeA.visible = true; });
+  maxOff = (vis.length - 1) * SPACING;
+  target = 0; pbIdx = -1;
+  if (PHONE) $('#pbDots').innerHTML = vis.map(() => '<i></i>').join('');
+  $('#cTot').textContent = String(vis.length).padStart(2, '0');
+  const names = { hoodies: 'Hoodies', knitwear: 'Knitwear', polos: 'Polos' };
+  $('#railFilter').classList.toggle('on', railCat !== 'all'); document.body.classList.toggle('railf', railCat !== 'all');
+  $('#rfName').textContent = `${names[railCat] || ''} — ${vis.length} piece${vis.length === 1 ? '' : 's'}`;
+  document.querySelectorAll('[data-rail]').forEach((a) => a.classList.toggle('on', a.dataset.rail === railCat));
+}
 let mode = 'home';
 let selected = null;
 let hovered = -1;
@@ -197,7 +226,7 @@ canvas.addEventListener('pointerup', (e) => {
     const dx = e.clientX - drag.x;
     const from = Math.round(dragStartOff / SPACING);
     const step = Math.abs(dx) > 30 ? (dx < 0 ? 1 : -1) : 0;
-    target = THREE.MathUtils.clamp(from + step, 0, N - 1) * SPACING;
+    target = THREE.MathUtils.clamp(from + step, 0, vis.length - 1) * SPACING;
   }
   drag = null;
   if (click) onClick(e);
@@ -214,8 +243,9 @@ addEventListener('keydown', (e) => {
 
 function pick() {
   ray.setFromCamera(pointer, camera);
-  const hits = ray.intersectObjects(slots.map((s) => s.hit), false);
-  return hits.length ? hits[0].object.userData.slot : -1;
+  const hits = ray.intersectObjects(slots.filter((s) => s.shown).map((s) => s.hit), false);
+  const h = hits.find((x) => slots[x.object.userData.slot].shown);
+  return h ? h.object.userData.slot : -1;
 }
 function onClick() {
   if (mode !== 'home') return;
@@ -261,9 +291,10 @@ $('#pSizes').addEventListener('click', (e) => {
   size = b.dataset.size; fillProduct(slots[selected].item);
 });
 function openProduct(i) {
+  if (!slots[i].shown) setRailFilter('all');
   selected = i; mode = 'product'; size = 'M';
   document.body.classList.add('mode-product');
-  target = i * SPACING;
+  target = slots[i].k * SPACING;
   const s = slots[i];
   s.rope = 'cut'; s.tc = 0; s.ph.wz += 0.9 * (Math.random() < 0.5 ? -1 : 1); s.ph.wx -= 0.7;
   fillProduct(s.item);
@@ -338,7 +369,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794102939');
+  const mod = await import('./tryon.js?v=1794104400');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
@@ -365,17 +396,18 @@ document.addEventListener('click', (e) => {
   if (act === 'credits' && a.tagName === 'A') { shop.closeShop(); }
   if (act === 'addBag' && selected != null) addToBag(slots[selected].item);
   if (act === 'toggleWish' && selected != null) { shop.toggleWish(slots[selected].item.id); }
-  if (act === 'atelier') { closeBag(); if (mode === 'product') closeProduct(); }
+  if (act === 'atelier') { closeBag(); if (mode === 'product') closeProduct(); setRailFilter('all'); }
   if (act === 'tryOn' && selected != null) openTryOn(slots[selected].item);
-  if (act === 'details') openProduct(Math.max(0, pbIdx));
-  if (act === 'tryOnCur') openTryOn(slots[Math.max(0, pbIdx)].item);
+  if (act === 'details') openProduct(vis[Math.max(0, pbIdx)]);
+  if (act === 'tryOnCur') openTryOn(slots[vis[Math.max(0, pbIdx)]].item);
+  if (act === 'clearRail') setRailFilter('all');
 });
 
 // ---------- store ----------
 let paused = false;
 const shop = initShop({
   items: ITEMS, thumbs,
-  openOnRail: (i) => { if (mode === 'product') closeProduct(); target = i * SPACING; setTimeout(() => openProduct(i), mode === 'home' ? 450 : 50); },
+  openOnRail: (i) => { if (mode === 'product') closeProduct(); if (!slots[i].shown) setRailFilter('all'); target = slots[i].k * SPACING; setTimeout(() => openProduct(i), mode === 'home' ? 450 : 50); },
   tryOn: (it) => openTryOn(it),
   toast, getSize: () => size,
   onShop: (open) => { paused = open; if (open) { closeBag(); if (mode === 'product') closeProduct(); } },
@@ -424,9 +456,9 @@ let pbIdx = -1;
 function updatePhoneBar(i) {
   if (!PHONE || i === pbIdx) return;
   const first = pbIdx < 0; pbIdx = i;
-  const it = ITEMS[i]; const bar = $('#pbar');
+  const it = slots[vis[i]] ? slots[vis[i]].item : ITEMS[0]; const bar = $('#pbar');
   const fill = () => {
-    $('#pbLine').textContent = it.line; $('#pbCount').textContent = `${String(i + 1).padStart(2, '0')} / ${String(N).padStart(2, '0')}`;
+    $('#pbLine').textContent = it.line; $('#pbCount').textContent = `${String(i + 1).padStart(2, '0')} / ${String(vis.length).padStart(2, '0')}`;
     $('#pbName').textContent = it.name; $('#pbColor').textContent = it.color; $('#pbPrice').textContent = `€${it.price}`;
     $('#pbSwatch').style.background = it.hex;
     [...$('#pbDots').children].forEach((d, k) => d.classList.toggle('on', k === i));
@@ -435,6 +467,12 @@ function updatePhoneBar(i) {
   if (first) fill(); else { bar.classList.add('swap'); setTimeout(fill, 180); }
 }
 if (PHONE) $('#pbDots').innerHTML = ITEMS.map(() => '<i></i>').join('');
+document.addEventListener('click', (e) => {
+  const r = e.target.closest('[data-rail]'); if (!r) return;
+  e.preventDefault(); shop.closeShop(); closeBag();
+  $('#menu').classList.remove('open'); $('#scrim').classList.remove('on');
+  setRailFilter(r.dataset.rail);
+});
 
 // ---------- label ----------
 const label = $('#label');
@@ -515,7 +553,7 @@ function stepPhysics(s, dt, t) {
 
 function updateRope(s, t) {
   s.pivot.updateMatrixWorld(true);
-  const A = _a.set(s.item.index * SPACING, RAIL_Y, 0);
+  const A = _a.set(s.x, RAIL_Y, 0);
   const P = s.g.root.localToWorld(_b.copy(s.at)); rail.worldToLocal(P);
   const full = A.distanceTo(P);
   if (s.rope === 'intact') {
@@ -576,11 +614,16 @@ function tick() {
   } else if (hovered !== -1) { hovered = -1; canvas.classList.remove('pointer'); }
 
   // garments: pendulum swing from rail velocity, hover turn, product lift
+  sizeRail(Math.max(1, vis.length - 1) * SPACING + 1.4);
   slots.forEach((s, i) => {
+    if (!s.shown) return;
+    // slide to its place on the (filtered) rail
+    s.x += (s.k * SPACING - s.x) * Math.min(1, dt * 6);
+    s.pivot.position.x = s.x; s.knot.position.x = s.x;
     stepPhysics(s, dt, t);
     const isSel = mode === 'product' && selected === i;
-    const isHover = hovered === i || (PHONE && mode === 'home' && i === ci);
-    const phoneCur = PHONE && mode === 'home' && i === ci;
+    const isHover = hovered === i || (PHONE && mode === 'home' && s.k === ci);
+    const phoneCur = PHONE && mode === 'home' && s.k === ci;
     const turnT = isSel || phoneCur ? 0 : isHover ? s.baseTurn + 0.38 : s.baseTurn + Math.sin(t * 0.4 + i) * 0.03;
     s.turn += (turnT - s.turn) * Math.min(1, dt * 3);
     s.tc += dt;
