@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794320660';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794320660';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794321443';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794321443';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -110,7 +110,8 @@ export class TryOn {
         const { ImageSegmenter } = await import('../lib/mediapipe/vision_bundle.mjs');
         const so = (delegate) => ({ baseOptions: { modelAssetPath: new URL(MP + 'selfie_multiclass_256x256.tflite', location.href).href, delegate },
           runningMode: 'VIDEO', outputCategoryMask: true, outputConfidenceMasks: false });
-        try { this.seg = await ImageSegmenter.createFromOptions(fs, so('GPU')); } catch { this.seg = await ImageSegmenter.createFromOptions(fs, so('CPU')); }
+        const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        try { this.seg = await ImageSegmenter.createFromOptions(fs, so(ios ? 'CPU' : 'GPU')); } catch { this.seg = await ImageSegmenter.createFromOptions(fs, so('CPU')); }
       } catch (e) { console.warn('segmentation unavailable', e); this.seg = null; }
       console.info('fitting room: segmentation', this.seg ? 'on' : 'off');
     }
@@ -222,9 +223,17 @@ export class TryOn {
       const rr = Math.max(0.035, Math.hypot(lm[b].x - lm[w].x, (lm[b].y - lm[w].y) / this.aspect) * 1.5);
       hands.push([cx * W, cy * H, rr * W]);
     }
+    // hair and face only count above the shoulder line: some phones (iOS GPU) label the whole
+    // person as hair/face, which put the entire body in front of the garment
+    let sy0 = H, sy1 = H;
+    if (lm && lm[LS].visibility > 0.5 && lm[RS].visibility > 0.5) {
+      const l = lm[LS].x < lm[RS].x ? lm[LS] : lm[RS], r = l === lm[LS] ? lm[RS] : lm[LS];
+      const dxr = Math.max(1e-3, r.x - l.x), k = (r.y - l.y) / dxr;
+      sy0 = (l.y - k * l.x) * H; sy1 = k * H / W; // shoulder line: y = sy0 + sy1 * x (pixels)
+    }
     for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
       const c = cls[i];
-      let on = c === 1 || c === 3; // hair, face
+      let on = (c === 1 || c === 3) && y < sy0 + sy1 * x; // hair, face
       if (!on && c === 2) for (const [hx, hy, hr] of hands) { const dx = x - hx, dy = (y - hy) / this.aspect; if (dx * dx + dy * dy < hr * hr) { on = true; break; } }
       d[i * 4 + 3] = on ? 255 : 0;
     }
