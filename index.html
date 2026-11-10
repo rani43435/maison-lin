@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Maison Lin — Autumn Collection</title>
-<meta name="description" content="Maison Lin — an atelier of linen, knit and jersey. Browse the rail in 3D and try every piece on with your camera.">
+<meta name="description" content="Maison Lin — an atelier of linen, knit and jersey. Browse the rail in 3D and turn every piece in your hands.">
 <meta name="theme-color" content="#E9DFD2">
 <link rel="icon" href="favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,7 +26,7 @@
   <div class="loader-sub">Atelier — Est. 2026</div>
 </div>
 
-<div class="announce" id="announce"><div class="announce-track"><span>Complimentary delivery over €300</span><span>Free returns within 30 days</span><span>Try every piece on with your camera</span><span>Gift wrapping on request</span><span>Complimentary delivery over €300</span><span>Free returns within 30 days</span><span>Try every piece on with your camera</span><span>Gift wrapping on request</span></div></div>
+<div class="announce" id="announce"><div class="announce-track"><span>Complimentary delivery over €300</span><span>Free returns within 30 days</span><span>Made in small batches</span><span>Gift wrapping on request</span><span>Complimentary delivery over €300</span><span>Free returns within 30 days</span><span>Made in small batches</span><span>Gift wrapping on request</span></div></div>
 <header class="nav">
   <div class="nav-left">
     <button class="icon-btn menu-btn" data-act="menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 7h18M3 12h18M3 17h12"/></svg></button>
@@ -50,7 +50,7 @@
 <section id="intro" class="intro">
   <p class="eyebrow">Autumn — Winter 2026</p>
   <h1>Quiet pieces,<br><em>made to be worn.</em></h1>
-  <p class="intro-sub">Drag or scroll along the rail. Choose a piece, turn it in your hands, then try it on with your camera.</p>
+  <p class="intro-sub">Drag or scroll along the rail. Choose a piece and turn it in your hands.</p>
   <div class="intro-cta"><button class="btn primary" data-shop="all">Shop all pieces</button><button class="btn ghost" data-shop="new">New in</button></div>
 </section>
 
@@ -61,7 +61,7 @@
   <h2 class="pbar-name" id="pbName"></h2>
   <div class="pbar-meta"><span class="swatch" id="pbSwatch"></span><span id="pbColor"></span><span class="sep">·</span><span id="pbPrice"></span></div>
   <div class="pbar-dots" id="pbDots"></div>
-  <div class="pbar-actions"><button class="btn ghost" data-act="details">Details</button><button class="btn primary" data-act="tryOnCur"><span class="dot"></span>Try it on</button></div>
+  <div class="pbar-actions"><button class="btn ghost" data-act="details">Details</button></div>
 </div>
 <div class="rail-filter" id="railFilter"><span id="rfName"></span><button data-act="clearRail">Show all</button></div>
 <div class="rail-hint" id="railHint"><span class="line"></span>Drag to browse<span class="line"></span></div>
@@ -78,7 +78,6 @@
   <p class="p-stock" id="pStock"></p>
   <div class="p-actions">
     <button class="btn primary" data-act="addBag">Add to bag</button>
-    <button class="btn ghost" data-act="tryOn"><span class="dot"></span>Try it on — AR</button>
   </div>
   <ul class="p-perks"><li id="pDelivery"></li><li>Free returns within 30 days</li><li>Complimentary gift wrapping</li></ul>
   <div class="acc open"><button class="acc-h" data-act="acc">Description</button><div class="acc-b"><p class="p-desc" id="pDesc"></p></div></div>
@@ -137,7 +136,7 @@
     <div class="grid" id="shopGrid"></div>
     <div class="services">
       <div><b>Complimentary delivery</b><span>On every order over €300</span></div>
-      <div><b>Virtual fitting room</b><span>Try each piece on with your camera</span></div>
+      <div><b>360° view</b><span>Turn every piece in 3D before you buy</span></div>
       <div><b>Free returns</b><span>Within 30 days</span></div>
       <div><b>Gift wrapping</b><span>Linen pouch and a handwritten card</span></div>
     </div>
@@ -158,31 +157,6 @@
 <div id="sizeModal" class="modal"><div class="modal-card"><button class="close" data-act="closeSize" aria-label="Close">×</button><p class="eyebrow">Size guide</p><h3>Find your size</h3><p class="p-desc">Measurements of the garment laid flat, in centimetres. Our pieces are cut relaxed — take your usual size, or one down for a closer fit.</p><table id="sizeTable"></table></div></div>
 <div id="scrim" class="scrim" data-act="closeAll"></div>
 
-<section id="tryon" class="tryon">
-  <div class="to-frame" id="toFrame">
-    <video id="toVideo" playsinline muted></video>
-    <canvas id="toCanvas"></canvas>
-    <canvas id="toFront"></canvas>
-    <div class="to-grain"></div>
-  </div>
-  <div class="to-top">
-    <div class="logo small">Maison <em>Lin</em> <span class="to-tag">Fitting room</span></div>
-    <div class="to-actions">
-      <button class="flip" data-act="snap" aria-label="Take a photo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3.2"/></svg></button>
-      <button class="flip cam-flip" data-act="flipCam" aria-label="Switch camera"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><path d="M9.5 13.5a2.6 2.6 0 0 0 4.6 1.4M14.5 12.3a2.6 2.6 0 0 0-4.6-1.4"/><path d="M14.6 15.4l-.5-.5.6-.6M9.4 10.6l.5.5-.6.6"/></svg></button>
-      <button class="close light" data-act="closeTryOn" aria-label="Close">×</button>
-    </div>
-  </div>
-  <div class="to-status" id="toStatus">Preparing the fitting room…</div>
-  <div class="to-badge" id="toBadge">Back view</div>
-  <div class="to-flash" id="toFlash"></div>
-  <div class="to-bottom">
-    <div class="to-info"><span id="toName"></span><span id="toPrice"></span></div>
-    <div class="to-sizes" id="toSizes"></div>
-    <div class="to-picks" id="toPicks"></div>
-    <button class="btn primary light" data-act="addBagTry">Add to bag</button>
-  </div>
-</section>
 
 <button class="credits-btn" data-act="credits">3D credits</button>
 <div id="credits" class="credits"><button class="close" data-act="closeCredits" aria-label="Close">×</button><p class="eyebrow">Garment models — CC BY 4.0</p><ul id="creditList"></ul><p class="p-note">Recoloured, refitted and rigged for Maison Lin.</p></div>
