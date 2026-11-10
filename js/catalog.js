@@ -60,15 +60,11 @@ const C = [
   ['polo', 'Caramel', '#9E6A3C', '#EAD7BC'],
   ['knit', 'Moka', '#5E4231', '#E3CFB4'],
   ['polo', 'Crème', '#E7DCC7', '#E7DCC7'],
-  ['hoodie', 'Taupe', '#8C7B6B', '#8C7B6B'],
-  ['hoodie-pocket', 'Chocolat', '#4A3328', '#4A3328'],
-  ['hoodie', 'Lin', '#DCD0BC', '#DCD0BC'],
-  ['hoodie-pocket', 'Camel', '#B08A5E', '#B08A5E'],
 ];
 
 const D_FABRIC = { knit: 'knit', polo: 'pique', hoodie: 'fleece', 'hoodie-pocket': 'fleece' };
 const CATEGORY = { knit: 'knitwear', polo: 'polos', hoodie: 'hoodies', 'hoodie-pocket': 'hoodies', tee: 'tees', linen: 'shirts' };
-const BADGES = { 'knit-avoine': 'Bestseller', 'hoodie-pocket-chocolat': 'New', 'polo-crme': 'Limited' };
+const BADGES = { 'knit-avoine': 'Bestseller', 'knit-moka': 'New', 'polo-crme': 'Limited' };
 
 export const ITEMS = C.map(([model, color, hex, button], i) => ({
   id: `${model}-${color.toLowerCase().replace(/[^a-z]/g, '')}`,
@@ -81,7 +77,7 @@ export const SETTINGS = { store: { freeShipping: 300, shippingFee: 12 }, promo: 
 
 /** the catalogue: built-in pieces + pieces made from photos (Supabase when connected, else assets/custom/products.json) */
 export async function loadCatalog() {
-  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794321443');
+  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794353679');
   let extra = [];
   if (live()) {
     const [rows, st] = await Promise.all([fetchProducts(), fetchSettings()]);
@@ -89,7 +85,7 @@ export async function loadCatalog() {
     extra = (rows || []).filter((r) => r.glb_url).map((r) => ({
       id: r.id, base: r.base || 'knit', name: r.name, color: r.color, hex: r.hex, price: r.price, fabric: undefined,
       line: r.line, desc: r.description, details: r.details || [], glb: r.glb_url, texture: r.texture_url, fabricTex: r.fabric_url,
-      model: r.model || {}, ai: !!(r.model && r.model.ai), category: r.category, badge: r.badge, stock: r.stock || {}, sort: r.sort,
+      model: r.model || {}, photos: r.photos || (r.model && r.model.photos) || null, ai: !!(r.model && r.model.ai), category: r.category, badge: r.badge, stock: r.stock || {}, sort: r.sort,
     }));
     // built-in demo pieces: hide or re-price them from /admin (settings.builtins)
     const B = SETTINGS.builtins || {};
@@ -107,13 +103,14 @@ export async function loadCatalog() {
     } catch {}
   }
   for (const p of extra) {
+    if (p.base && p.base.startsWith('hoodie')) continue; // no hoodies in the store
     if (ITEMS.some((i) => i.id === p.id)) continue;
     if (!MODELS[p.base]) continue;
     MODELS[p.id] = { ...MODELS[p.base], ...(p.model || {}), ai: !!p.ai, glb: p.glb, photo: p.texture, photoFabric: p.fabricTex, detail: false, extra: null };
     ITEMS.push({
       id: p.id, model: p.id, base: p.base, color: p.color, hex: p.hex, button: p.hex, name: p.name, price: p.price,
       fabric: p.fabric || D_FABRIC[p.base] || 'fleece', line: p.line || 'Atelier', desc: p.desc || '', details: p.details || [],
-      category: p.category && p.category !== p.base ? p.category : (CATEGORY[p.base] || 'hoodies'), photo: p.texture, badge: p.badge ?? 'Atelier', stock: p.stock || {}, added: 100 + ITEMS.length, index: ITEMS.length,
+      category: p.category && p.category !== p.base ? p.category : (CATEGORY[p.base] || 'knitwear'), photo: p.texture, photos: p.photos || null, badge: p.badge ?? 'Atelier', stock: p.stock || {}, added: 100 + ITEMS.length, index: ITEMS.length,
     });
   }
   ITEMS.forEach((it, i) => { it.index = i; });
@@ -123,7 +120,7 @@ export async function loadCatalog() {
   return ITEMS;
 }
 
-export const CATEGORIES = [['all', 'All pieces'], ['knitwear', 'Knitwear'], ['hoodies', 'Hoodies'], ['polos', 'Polos']];
+export const CATEGORIES = [['all', 'All pieces'], ['knitwear', 'Knitwear'], ['polos', 'Polos']];
 // size guide (cm, garment measured flat)
 export const SIZE_GUIDE = { head: ['Size', 'Chest', 'Length', 'Sleeve', 'EU'], rows: [
   ['XS', '108', '68', '60', '44'], ['S', '114', '70', '61', '46'], ['M', '120', '72', '62', '48'], ['L', '126', '74', '63', '50'], ['XL', '132', '76', '64', '52'] ] };

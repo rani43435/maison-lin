@@ -1,6 +1,6 @@
 // Store layer: shop grid, filters, search, wishlist, menu, size guide.
 // The 3D rail stays the heart of the site: every card opens its piece on the rail.
-import { CATEGORIES, SIZE_GUIDE } from './catalog.js?v=1794321443';
+import { CATEGORIES, SIZE_GUIDE } from './catalog.js?v=1794353679';
 
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -21,7 +21,7 @@ export function initShop(api) {
   const siblings = (it) => items.filter((o) => (o.base || o.model) === (it.base || it.model));
   const card = (it, small = false) => `
     <article class="card" data-open="${it.index}">
-      <div class="img">${img(it)}${it.badge ? `<span class="badge">${esc(it.badge)}</span>` : ''}
+      <div class="img${(api.thumbs[it.id] || {}).photo ? ' photo' : ''}">${img(it)}${it.badge ? `<span class="badge">${esc(it.badge)}</span>` : ''}
         <button class="heart ${wish.includes(it.id) ? 'on' : ''}" data-wish="${it.id}" aria-label="Wishlist">${HEART}</button>
         ${small ? '' : `<button class="quick" data-try="${it.index}"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--caramel)"></span>Try it on</button>`}</div>
       <div class="meta"><div class="n">${esc(it.name)}</div><div class="c">${esc(it.color)}</div><div class="pr">€${it.price}</div>

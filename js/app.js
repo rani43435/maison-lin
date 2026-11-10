@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog, SETTINGS } from './catalog.js?v=1794321443';
-import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794321443';
-import { initShop } from './shop.js?v=1794321443';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog, SETTINGS } from './catalog.js?v=1794353679';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794353679';
+import { initShop } from './shop.js?v=1794353679';
 await loadCatalog();
-import { live, startCheckout } from './backend.js?v=1794321443';
+import { live, startCheckout } from './backend.js?v=1794353679';
 // ---------- store settings from /admin (texts, colours, delivery) ----------
 (function applySettings() {
   const st = SETTINGS;
@@ -183,7 +183,7 @@ function setRailFilter(cat) {
   target = 0; pbIdx = -1;
   if (PHONE) $('#pbDots').innerHTML = vis.map(() => '<i></i>').join('');
   $('#cTot').textContent = String(vis.length).padStart(2, '0');
-  const names = { hoodies: 'Hoodies', knitwear: 'Knitwear', polos: 'Polos' };
+  const names = { knitwear: 'Knitwear', polos: 'Polos' };
   $('#railFilter').classList.toggle('on', railCat !== 'all'); document.body.classList.toggle('railf', railCat !== 'all');
   $('#rfName').textContent = `${names[railCat] || ''} — ${vis.length} piece${vis.length === 1 ? '' : 's'}`;
   document.querySelectorAll('[data-rail]').forEach((a) => a.classList.toggle('on', a.dataset.rail === railCat));
@@ -419,7 +419,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794321443');
+  const mod = await import('./tryon.js?v=1794353679');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);
@@ -479,6 +479,7 @@ async function renderThumbs() {
   sc.add(new THREE.HemisphereLight('#fff7ee', '#b9a38c', 0.45));
   const cam = new THREE.PerspectiveCamera(22, W / H, 0.1, 20);
   for (const it of ITEMS) {
+    if (it.photos) continue; // real product photos are used as they are
     const g = await makeGarment(it);
     // relaxed, hanging sleeves like on the rail
     const d = restArmDirs(g); g.root.updateMatrixWorld(true);
@@ -730,5 +731,8 @@ function tick() {
   tick();
   setTimeout(() => $('#loader').classList.add('done'), 400);
   window.__ml = { scene, camera, slots, openProduct, closeProduct, shop, thumbs, spin: (a) => { productSpin = a; spinVel = 0; spinIdle = -99; } };
+  // pieces with real product photos show them in the store straight away (no 3D render)
+  for (const it of ITEMS) if (it.photos) thumbs[it.id] = { f: it.photos.f, b: it.photos.b || it.photos.f, photo: true };
+  shop.refreshThumbs();
   setTimeout(() => renderThumbs().catch((e) => console.warn('thumbs', e)), 900);
 })();

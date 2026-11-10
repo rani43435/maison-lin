@@ -1,34 +1,5 @@
 [
  {
-  "id": "le-hoodie-delave-anthracite",
-  "base": "hoodie",
-  "name": "Le Hoodie Délavé",
-  "color": "Anthracite",
-  "hex": "#6D6C6B",
-  "price": 240,
-  "fabric": "fleece",
-  "line": "Molleton — Atelier",
-  "desc": "A soft, heavy brushed-back fleece hoodie with a deep hood and dropped shoulders.",
-  "details": [
-   [
-    "Fabric",
-    "100% cotton fleece"
-   ],
-   [
-    "Fit",
-    "Relaxed"
-   ],
-   [
-    "Care",
-    "Wash cold, inside out"
-   ]
-  ],
-  "glb": "assets/custom/le-hoodie-delave-anthracite.glb?v=1794140771",
-  "texture": "assets/custom/le-hoodie-delave-anthracite.jpg?v=1794140771",
-  "fabricTex": "assets/custom/le-hoodie-delave-anthracite_fabric.jpg?v=1794140771",
-  "category": "hoodie"
- },
- {
   "id": "le-pull-onyx-cacao",
   "base": "knit",
   "name": "Le Pull Onyx",
@@ -61,46 +32,10 @@
    "upper": 0.346,
    "fore": 0.298
   },
-  "category": "knit"
- },
- {
-  "id": "flame-terry-hoodie-charcoal",
-  "base": "hoodie-pocket",
-  "name": "Flame Terry Hoodie",
-  "color": "Charcoal",
-  "hex": "#332F37",
-  "price": 164,
-  "fabric": "fleece",
-  "line": "Holyland Civilians — draft",
-  "desc": "A relaxed unisex hoodie in soft cotton French terry, with an all-over flame print around the body and sleeves. Garment washed for a worn-in feel. By Holyland Civilians.",
-  "details": [
-   [
-    "Fabric",
-    "100% cotton, 320g French terry"
-   ],
-   [
-    "Fit",
-    "Unisex, loose, true to size"
-   ],
-   [
-    "Details",
-    "Kangaroo pocket, ribbed cuffs and hem"
-   ],
-   [
-    "Colour",
-    "Charcoal"
-   ]
-  ],
-  "glb": "assets/custom/flame-terry-hoodie-charcoal.glb?v=1794161543",
-  "texture": "assets/custom/flame-terry-hoodie-charcoal.jpg?v=1794161543",
-  "fabricTex": "assets/custom/flame-terry-hoodie-charcoal_fabric.jpg?v=1794161543",
-  "model": {
-   "shoulderY": 1.44,
-   "shoulderW": 0.398,
-   "upper": 0.281,
-   "fore": 0.344
-  },
-  "category": "hoodie",
-  "badge": "Draft"
+  "category": "knitwear",
+  "photos": {
+   "f": "assets/custom/le-pull-onyx-cacao_front.jpg",
+   "b": "assets/custom/le-pull-onyx-cacao_back.jpg"
+  }
  }
 ]

@@ -231,6 +231,8 @@ body.shop-open .nav,body.search-open .nav{background:var(--bg);box-shadow:0 1px 
 .card{position:relative;cursor:pointer}
 .card .img{position:relative;aspect-ratio:4/5;background:linear-gradient(180deg,#efe7dc,#e3d7c7);overflow:hidden}
 .card .img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transition:opacity .6s var(--ease),transform 1.2s var(--ease)}
+.card .img.photo{background:#f4f4f6}
+.card .img.photo img{object-fit:cover}
 .card .img img.b{opacity:0}
 .card:hover .img img.f{opacity:0}
 .card:hover .img img.b{opacity:1;transform:scale(1.03)}

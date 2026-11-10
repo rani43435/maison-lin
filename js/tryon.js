@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794321443';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794321443';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794353679';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794353679';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -221,7 +221,9 @@ export class TryOn {
       if (lm[w].visibility < 0.3) continue;
       const cx = (lm[w].x + lm[a].x + lm[b].x + lm[c].x) / 4, cy = (lm[w].y + lm[a].y + lm[b].y + lm[c].y) / 4;
       const rr = Math.max(0.035, Math.hypot(lm[b].x - lm[w].x, (lm[b].y - lm[w].y) / this.aspect) * 1.5);
-      hands.push([cx * W, cy * H, rr * W]);
+      // only the hand itself, from the wrist outwards: the forearm skin stays under the sleeve
+      const wx = lm[w].x * W, wy = lm[w].y * H, dx = cx * W - wx, dy = cy * H - wy, dl = Math.hypot(dx, dy) || 1;
+      hands.push([cx * W, cy * H, rr * W, wx, wy, dx / dl, dy / dl]);
     }
     // hair and face only count above the shoulder line: some phones (iOS GPU) label the whole
     // person as hair/face, which put the entire body in front of the garment
@@ -234,7 +236,10 @@ export class TryOn {
     for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
       const c = cls[i];
       let on = (c === 1 || c === 3) && y < sy0 + sy1 * x; // hair, face
-      if (!on && c === 2) for (const [hx, hy, hr] of hands) { const dx = x - hx, dy = (y - hy) / this.aspect; if (dx * dx + dy * dy < hr * hr) { on = true; break; } }
+      if (!on && c === 2) for (const [hx, hy, hr, wx, wy, ux, uy] of hands) {
+        const dx = x - hx, dy = y - hy;
+        if (dx * dx + dy * dy < hr * hr && (x - wx) * ux + (y - wy) * uy > 0) { on = true; break; }
+      }
       d[i * 4 + 3] = on ? 255 : 0;
     }
     this.maskCtx.putImageData(this.maskImg, 0, 0);
@@ -502,6 +507,28 @@ export class TryOn {
         ub.scale.setScalar(st.su); fb.scale.setScalar(st.sf / st.su);
         rig.aim('upperarm' + sd, st.u, 'forearm' + sd);
         rig.aim('forearm' + sd, st.f, null);
+        // exact fit: the elbow of the sleeve lands on the real elbow and the cuff ends on the wrist
+        // (never short of it, so the forearm is always covered by the sleeve)
+        const tip = !M.short && vis(E) && vis(Wr) ? cuffTip(g, sd) : null;
+        if (tip) {
+          const E3 = B3(E), W3 = B3(Wr), V = THREE.Vector3;
+          for (let it = 0; it < 3; it++) {
+            ub.updateWorldMatrix(true, true);
+            const uW = ub.getWorldPosition(new V());
+            turnBone(ub, fb.getWorldPosition(new V()).sub(uW), E3.clone().sub(uW));
+            const fW = fb.getWorldPosition(new V());
+            const ru = E3.distanceTo(uW) / Math.max(1e-5, fW.distanceTo(uW));
+            st.su = THREE.MathUtils.clamp(st.su * ru, 0.55, 1.9);
+            ub.scale.setScalar(st.su); fb.scale.setScalar(st.sf / st.su);
+            ub.updateWorldMatrix(false, true);
+            const eW = fb.getWorldPosition(new V());
+            turnBone(fb, fb.localToWorld(tip.clone()).sub(eW), W3.clone().sub(eW));
+            const rf = W3.distanceTo(eW) / Math.max(1e-5, fb.localToWorld(tip.clone()).distanceTo(eW));
+            st.sf = THREE.MathUtils.clamp(st.sf * rf, 0.55, 1.9);
+            fb.scale.setScalar(st.sf / st.su);
+            fb.updateWorldMatrix(false, true);
+          }
+        }
       }
     }
 
@@ -540,12 +567,52 @@ export class TryOn {
     const front = (i) => (w[i].z - zRef) > 0.07;
     const sideCap = (sd, S, E, Wr, H) => {
       this.caps['ua' + sd].visible = false;
-      if (vis(E) && vis(Wr) && front(Wr)) this.capsule('fa' + sd, B3(E), B3(Wr), 0.034 * m); else this.caps['fa' + sd].visible = false;
+      // the forearm is inside the sleeve: no forearm occluder (it let the bare arm show through the sleeve)
+      this.caps['fa' + sd].visible = false;
       // hands always come out of the cuff, so they are drawn over the sleeve end
       if (!this.segOK && vis(Wr) && vis(H)) { const a = B3(Wr), b = B3(H); a.z += 0.05 * m; b.z += 0.05 * m; this.capsule('h' + sd, a.lerp(b, 0.15), b, 0.045 * m); } else this.caps['h' + sd].visible = false;
     };
     sideCap('L', LS, LE, LW, 19); sideCap('R', RS, RE, RW, 20);
   }
+}
+
+export { turnBone, cuffTip };
+// rotate a bone so that a world direction `from` (measured on the garment) turns to `to`
+const _tq = new THREE.Quaternion(), _pq = new THREE.Quaternion();
+function turnBone(bone, from, to) {
+  if (from.lengthSq() < 1e-12 || to.lengthSq() < 1e-12) return;
+  _tq.setFromUnitVectors(from.normalize(), to.normalize());
+  bone.parent.getWorldQuaternion(_pq);
+  bone.quaternion.premultiply(_pq.clone().invert().multiply(_tq).multiply(_pq));
+  bone.updateWorldMatrix(false, true);
+}
+
+// centre of the sleeve's cuff opening in the forearm bone's own space (rest pose), measured on the mesh
+const cuffCache = {};
+function cuffTip(g, sd) {
+  const ck = g.item.model + sd;
+  if (cuffCache[ck] !== undefined) return cuffCache[ck];
+  const pts = [];
+  const v = new THREE.Vector3();
+  for (const m of g.meshes) {
+    const P = m.geometry.attributes.position, SI = m.geometry.attributes.skinIndex, SW = m.geometry.attributes.skinWeight;
+    if (!m.skeleton || !SI) continue;
+    const bi = m.skeleton.bones.findIndex((b) => b.name.replace(/[^a-z]/gi, '').toLowerCase() === 'forearm' + sd);
+    if (bi < 0) continue;
+    const inv = m.skeleton.boneInverses[bi].clone().multiply(m.bindMatrix);
+    for (let i = 0; i < P.count; i++) {
+      let wgt = 0;
+      for (let k = 0; k < 4; k++) if (SI.getComponent(i, k) === bi) wgt += SW.getComponent(i, k);
+      if (wgt < 0.6) continue;
+      pts.push(v.fromBufferAttribute(P, i).applyMatrix4(inv).clone());
+    }
+  }
+  if (pts.length < 8) return (cuffCache[ck] = null);
+  const axis = pts.reduce((a, p) => a.add(p), new THREE.Vector3()).normalize(); // bone origin -> middle of the forearm sleeve
+  let max = -Infinity; for (const p of pts) max = Math.max(max, p.dot(axis));
+  const end = pts.filter((p) => p.dot(axis) > max * 0.95);
+  const tip = end.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / end.length);
+  return (cuffCache[ck] = tip);
 }
 
 // half-width of the garment's torso (metres, rest pose) at chest height, sleeves excluded
