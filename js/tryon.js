@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { SIZES, SIZE_SCALE } from './catalog.js?v=1794320004';
-import { makeGarment, HIPS_Y } from './garment.js?v=1794320004';
+import { SIZES, SIZE_SCALE } from './catalog.js?v=1794320660';
+import { makeGarment, HIPS_Y } from './garment.js?v=1794320660';
 
 const $ = (s) => document.querySelector(s);
 const MP = './lib/mediapipe/';
@@ -388,6 +388,15 @@ export class TryOn {
     const Wv = (i) => new THREE.Vector3(fwl[i].x, -fwl[i].y, -fwl[i].z);
     let img = {}, w = {};
     for (const i of IDS) { img[i] = P(i); w[i] = Wv(i); }
+    if (!hipsSeen) {
+      // the model only guesses hips it cannot see, and from a low phone angle the guess tilts the
+      // torso away from the camera: put them straight below the shoulders, in the shoulders' depth
+      const sv = w[LS].clone().sub(w[RS]), sw = Math.max(sv.length(), 0.25);
+      const pd = new THREE.Vector3(-sv.y, sv.x, 0).normalize(); if (pd.y > 0) pd.negate();
+      for (const [H, S, O] of [[LH, LS, RS], [RH, RS, LS]]) {
+        w[H] = w[S].clone().lerp(w[O], 0.12).addScaledVector(pd, sw * 1.3); w[H].z = w[S].z;
+      }
+    }
 
     // torso frame
     const frame = () => {

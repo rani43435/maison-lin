@@ -81,7 +81,7 @@ export const SETTINGS = { store: { freeShipping: 300, shippingFee: 12 }, promo: 
 
 /** the catalogue: built-in pieces + pieces made from photos (Supabase when connected, else assets/custom/products.json) */
 export async function loadCatalog() {
-  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794320004');
+  const { live, fetchProducts, fetchSettings } = await import('./backend.js?v=1794320660');
   let extra = [];
   if (live()) {
     const [rows, st] = await Promise.all([fetchProducts(), fetchSettings()]);
