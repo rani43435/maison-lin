@@ -114,7 +114,7 @@ export class TryOn {
       } catch (e) { console.warn('segmentation unavailable', e); this.seg = null; }
       console.info('fitting room: segmentation', this.seg ? 'on' : 'off');
     }
-    this.status('Step back until your shoulders and hips are in view');
+    this.status('Step back until your shoulders are in view');
     this.lastTs = -1;
     this.loop();
   }
@@ -346,10 +346,12 @@ export class TryOn {
     if (!g) return;
     const lm = res.landmarks && res.landmarks[0];
     const wl = res.worldLandmarks && res.worldLandmarks[0];
-    const ok = lm && wl && lm[LS].visibility > 0.5 && lm[RS].visibility > 0.5 && (lm[LH].visibility > 0.3 || lm[RH].visibility > 0.3);
+    // only the shoulders are needed: on a phone held at arm's length the hips are out of frame
+    const ok = lm && wl && lm[LS].visibility > 0.5 && lm[RS].visibility > 0.5;
+    const hipsSeen = ok && (lm[LH].visibility > 0.3 || lm[RH].visibility > 0.3);
     if (!ok) {
       this.miss = (this.miss || 0) + 1;
-      if (this.miss > 8) { g.root.visible = false; Object.values(this.caps).forEach((c) => (c.visible = false)); this.status('Step back until your shoulders and hips are in view'); this.smooth = null; }
+      if (this.miss > 8) { g.root.visible = false; Object.values(this.caps).forEach((c) => (c.visible = false)); this.status('Step back until your shoulders are in view'); this.smooth = null; }
       return;
     }
     this.miss = 0;
@@ -360,6 +362,17 @@ export class TryOn {
     for (const i of IDS) {
       flm[i] = { x: this.euro('ix' + i, lm[i].x, ts), y: this.euro('iy' + i, lm[i].y, ts), visibility: lm[i].visibility };
       fwl[i] = { x: this.euro('wx' + i, wl[i].x, ts), y: this.euro('wy' + i, wl[i].y, ts), z: this.euro('wz' + i, wl[i].z, ts, 0.8, 0.01) };
+    }
+    if (!hipsSeen) {
+      // hips out of frame: place them below the shoulders, square to the shoulder line
+      // (torso about 1.3 shoulder-widths long, hips a little narrower than the shoulders)
+      const a = this.aspect || 1, L = flm[LS], R = flm[RS];
+      const dx = (L.x - R.x) * a, dy = L.y - R.y, len = Math.hypot(dx, dy) || 1e-3;
+      let px = -dy / len, py = dx / len; if (py < 0) { px = -px; py = -py; }
+      const off = len * 1.3;
+      for (const [H, S, O] of [[LH, L, R], [RH, R, L]]) {
+        flm[H] = { x: S.x + (O.x - S.x) * 0.12 + (px * off) / a, y: S.y + (O.y - S.y) * 0.12 + py * off, visibility: 0.5 };
+      }
     }
     this.estimateLight(lm);
 
