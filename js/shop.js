@@ -23,7 +23,7 @@ export function initShop(api) {
     <article class="card" data-open="${it.index}">
       <div class="img">${img(it)}${it.badge ? `<span class="badge">${esc(it.badge)}</span>` : ''}
         <button class="heart ${wish.includes(it.id) ? 'on' : ''}" data-wish="${it.id}" aria-label="Wishlist">${HEART}</button>
-        </div>
+        ${small ? '' : `<button class="quick" data-try="${it.index}"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:var(--caramel)"></span>Try it on</button>`}</div>
       <div class="meta"><div class="n">${esc(it.name)}</div><div class="c">${esc(it.color)}</div><div class="pr">€${it.price}</div>
         ${small ? '' : `<div class="dots">${siblings(it).map((s) => `<i style="background:${s.hex}"></i>`).join('')}</div>`}</div>
     </article>`;
