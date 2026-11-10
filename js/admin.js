@@ -1,6 +1,6 @@
 // Maison Lin — admin: products, adding pieces from two photos, orders, store settings.
-import { CONFIG } from './config.js?v=1794148031';
-import { ITEMS } from './catalog.js?v=1794148031';
+import { CONFIG } from './config.js?v=1794320004';
+import { ITEMS } from './catalog.js?v=1794320004';
 
 const $ = (s, r = document) => r.querySelector(s);
 const app = $('#app');

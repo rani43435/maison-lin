@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog, SETTINGS } from './catalog.js?v=1794148031';
-import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794148031';
-import { initShop } from './shop.js?v=1794148031';
+import { ITEMS, SIZES, CREDITS, SIZE_SCALE, loadCatalog, SETTINGS } from './catalog.js?v=1794320004';
+import { makeGarment, loadModel, texturesReady } from './garment.js?v=1794320004';
+import { initShop } from './shop.js?v=1794320004';
 await loadCatalog();
-import { live, startCheckout } from './backend.js?v=1794148031';
+import { live, startCheckout } from './backend.js?v=1794320004';
 // ---------- store settings from /admin (texts, colours, delivery) ----------
 (function applySettings() {
   const st = SETTINGS;
@@ -419,7 +419,7 @@ $('#creditList').innerHTML = CREDITS.map(([t, a, u]) => `<li><a href="${u}" targ
 // ---------- try-on ----------
 let tryon = null;
 async function openTryOn(item) {
-  const mod = await import('./tryon.js?v=1794148031');
+  const mod = await import('./tryon.js?v=1794320004');
   if (!tryon) tryon = new mod.TryOn({ items: ITEMS, onAdd: (it, sz) => addToBag(it, sz || size), getSize: () => size, setSize: (s) => { size = s; if (selected != null) fillProduct(slots[selected].item); } });
   running = false;
   await tryon.open(item);

@@ -1,6 +1,6 @@
 // Store layer: shop grid, filters, search, wishlist, menu, size guide.
 // The 3D rail stays the heart of the site: every card opens its piece on the rail.
-import { CATEGORIES, SIZE_GUIDE } from './catalog.js?v=1794148031';
+import { CATEGORIES, SIZE_GUIDE } from './catalog.js?v=1794320004';
 
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
